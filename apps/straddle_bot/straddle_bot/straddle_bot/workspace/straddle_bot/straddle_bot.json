@@ -1,0 +1,85 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"sb-header-shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Your Shortcuts</b></span>\",\"col\":12}},{\"id\":\"sb-shortcut-dashboard\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Dashboard\",\"col\":3}},{\"id\":\"sb-shortcut-settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Bot Settings\",\"col\":3}},{\"id\":\"sb-shortcut-config\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Config Item\",\"col\":3}},{\"id\":\"sb-shortcut-session\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Trading Session\",\"col\":3}},{\"id\":\"sb-shortcut-order\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Trade Order\",\"col\":3}},{\"id\":\"sb-shortcut-pnl\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle PnL Snapshot\",\"col\":3}},{\"id\":\"sb-shortcut-event\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Session Event\",\"col\":3}},{\"id\":\"sb-shortcut-ledger\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Wallet Ledger Entry\",\"col\":3}},{\"id\":\"sb-shortcut-status\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Runtime Status\",\"col\":3}},{\"id\":\"sb-shortcut-fill\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Fill\",\"col\":3}},{\"id\":\"sb-shortcut-command\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Straddle Runtime Command\",\"col\":3}}]",
+ "creation": "2026-07-16 00:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "chart-line",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Straddle Bot",
+ "links": [],
+ "modified": "2026-07-27 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Straddle Bot",
+ "name": "Straddle Bot",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 50.0,
+ "shortcuts": [
+  {
+   "label": "Straddle Dashboard",
+   "link_to": "straddle-dashboard",
+   "type": "Page"
+  },
+  {
+   "label": "Straddle Bot Settings",
+   "link_to": "Straddle Bot Settings",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Config Item",
+   "link_to": "Straddle Config Item",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Trading Session",
+   "link_to": "Straddle Trading Session",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Trade Order",
+   "link_to": "Straddle Trade Order",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle PnL Snapshot",
+   "link_to": "Straddle PnL Snapshot",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Session Event",
+   "link_to": "Straddle Session Event",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Wallet Ledger Entry",
+   "link_to": "Straddle Wallet Ledger Entry",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Runtime Status",
+   "link_to": "Straddle Runtime Status",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Fill",
+   "link_to": "Straddle Fill",
+   "type": "DocType"
+  },
+  {
+   "label": "Straddle Runtime Command",
+   "link_to": "Straddle Runtime Command",
+   "type": "DocType"
+  }
+ ],
+ "title": "Straddle Bot"
+}

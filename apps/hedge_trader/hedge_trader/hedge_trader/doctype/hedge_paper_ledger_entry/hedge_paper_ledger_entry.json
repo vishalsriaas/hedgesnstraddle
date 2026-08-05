@@ -1,0 +1,162 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "autoname": "format:HT-LED-{#####}",
+ "creation": "2026-07-15 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ledger_section",
+  "session",
+  "trade_order",
+  "executor",
+  "account",
+  "column_break_ledger",
+  "posting_time",
+  "entry_type",
+  "symbol",
+  "side",
+  "amounts_section",
+  "qty",
+  "fill_price",
+  "debit",
+  "credit",
+  "balance_after",
+  "pnl",
+  "notes",
+  "detail_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "ledger_section",
+   "fieldtype": "Section Break",
+   "label": "Ledger"
+  },
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Session",
+   "options": "Hedge Trading Session"
+  },
+  {
+   "fieldname": "trade_order",
+   "fieldtype": "Link",
+   "label": "Order",
+   "options": "Hedge Trade Order"
+  },
+  {
+   "fieldname": "executor",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Executor"
+  },
+  {
+   "default": "Paper",
+   "fieldname": "account",
+   "fieldtype": "Data",
+   "label": "Account"
+  },
+  {
+   "fieldname": "column_break_ledger",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "posting_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Posting Time"
+  },
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Entry Type",
+   "options": "Trade\nPremium Debit\nPremium Credit\nRealized PnL\nReset\nAdjustment"
+  },
+  {
+   "fieldname": "symbol",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Symbol"
+  },
+  {
+   "fieldname": "side",
+   "fieldtype": "Select",
+   "label": "Side",
+   "options": "\nBUY\nSELL"
+  },
+  {
+   "fieldname": "amounts_section",
+   "fieldtype": "Section Break",
+   "label": "Amounts"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Quantity"
+  },
+  {
+   "fieldname": "fill_price",
+   "fieldtype": "Currency",
+   "label": "Fill Price"
+  },
+  {
+   "fieldname": "debit",
+   "fieldtype": "Currency",
+   "label": "Debit"
+  },
+  {
+   "fieldname": "credit",
+   "fieldtype": "Currency",
+   "label": "Credit"
+  },
+  {
+   "fieldname": "balance_after",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Balance After"
+  },
+  {
+   "fieldname": "pnl",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "PnL"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "detail_json",
+   "fieldtype": "Code",
+   "label": "Detail JSON",
+   "options": "JSON"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Hedge Trader",
+ "name": "Hedge Paper Ledger Entry",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "posting_time",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "symbol",
+ "track_changes": 1
+}

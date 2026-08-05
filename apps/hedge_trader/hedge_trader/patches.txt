@@ -1,0 +1,8 @@
+[pre_model_sync]
+
+[post_model_sync]
+hedge_trader.patches.v2_position_management
+hedge_trader.patches.v3_mark_only_entry
+hedge_trader.patches.v4_premium_limit_250
+hedge_trader.patches.v5_production_defaults
+hedge_trader.patches.v6_control_center

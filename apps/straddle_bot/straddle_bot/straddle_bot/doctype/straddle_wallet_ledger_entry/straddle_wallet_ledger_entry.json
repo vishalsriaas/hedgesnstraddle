@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "autoname": "format:STR-LED-{#####}",
+ "creation": "2026-07-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ledger_section",
+  "legacy_id",
+  "session",
+  "session_legacy_id",
+  "posting_time",
+  "entry_type",
+  "column_break_ledger",
+  "amount",
+  "balance_after",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "legacy_id",
+   "fieldtype": "Int",
+   "in_standard_filter": 1,
+   "label": "Runtime Record ID",
+   "unique": 1
+  },
+  {
+   "fieldname": "ledger_section",
+   "fieldtype": "Section Break",
+   "label": "Ledger"
+  },
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Session",
+   "options": "Straddle Trading Session"
+  },
+  {
+   "fieldname": "session_legacy_id",
+   "fieldtype": "Int",
+   "label": "Session Legacy ID"
+  },
+  {
+   "fieldname": "posting_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Posting Time"
+  },
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Entry Type",
+   "options": "RESET\nPREMIUM_DEBIT\nOPTIONS_CREDIT\nFUTURES_PNL\nADJUSTMENT"
+  },
+  {
+   "fieldname": "column_break_ledger",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount"
+  },
+  {
+   "fieldname": "balance_after",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Balance After"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Straddle Bot",
+ "name": "Straddle Wallet Ledger Entry",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "posting_time",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "entry_type",
+ "track_changes": 1
+}

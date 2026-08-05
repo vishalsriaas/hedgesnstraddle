@@ -1,0 +1,153 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "autoname": "format:STR-PNL-{#####}",
+ "creation": "2026-07-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "snapshot_section",
+  "legacy_id",
+  "session",
+  "session_legacy_id",
+  "snapshot_time",
+  "btc_mark",
+  "column_break_snapshot",
+  "call_mark",
+  "put_mark",
+  "pnl_section",
+  "call_upnl",
+  "put_upnl",
+  "long_upnl",
+  "short_upnl",
+  "total_upnl",
+  "risk_section",
+  "long_liq",
+  "short_liq",
+  "margin_used"
+ ],
+ "fields": [
+  {
+   "fieldname": "legacy_id",
+   "fieldtype": "Int",
+   "in_standard_filter": 1,
+   "label": "Runtime Record ID",
+   "unique": 1
+  },
+  {
+   "fieldname": "snapshot_section",
+   "fieldtype": "Section Break",
+   "label": "Snapshot"
+  },
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Session",
+   "options": "Straddle Trading Session"
+  },
+  {
+   "fieldname": "session_legacy_id",
+   "fieldtype": "Int",
+   "label": "Session Legacy ID"
+  },
+  {
+   "fieldname": "snapshot_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Snapshot Time"
+  },
+  {
+   "fieldname": "btc_mark",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "BTC Mark"
+  },
+  {
+   "fieldname": "column_break_snapshot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "call_mark",
+   "fieldtype": "Currency",
+   "label": "Call Mark"
+  },
+  {
+   "fieldname": "put_mark",
+   "fieldtype": "Currency",
+   "label": "Put Mark"
+  },
+  {
+   "fieldname": "pnl_section",
+   "fieldtype": "Section Break",
+   "label": "PnL"
+  },
+  {
+   "fieldname": "call_upnl",
+   "fieldtype": "Currency",
+   "label": "Call UPnL"
+  },
+  {
+   "fieldname": "put_upnl",
+   "fieldtype": "Currency",
+   "label": "Put UPnL"
+  },
+  {
+   "fieldname": "long_upnl",
+   "fieldtype": "Currency",
+   "label": "Long UPnL"
+  },
+  {
+   "fieldname": "short_upnl",
+   "fieldtype": "Currency",
+   "label": "Short UPnL"
+  },
+  {
+   "fieldname": "total_upnl",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total UPnL"
+  },
+  {
+   "fieldname": "risk_section",
+   "fieldtype": "Section Break",
+   "label": "Risk"
+  },
+  {
+   "fieldname": "long_liq",
+   "fieldtype": "Currency",
+   "label": "Long Liquidation"
+  },
+  {
+   "fieldname": "short_liq",
+   "fieldtype": "Currency",
+   "label": "Short Liquidation"
+  },
+  {
+   "fieldname": "margin_used",
+   "fieldtype": "Currency",
+   "label": "Margin Used"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Straddle Bot",
+ "name": "Straddle PnL Snapshot",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "snapshot_time",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

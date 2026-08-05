@@ -1,0 +1,89 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "autoname": "format:STR-EVT-{#####}",
+ "creation": "2026-07-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "event_section",
+  "legacy_id",
+  "session",
+  "session_legacy_id",
+  "event_time",
+  "column_break_event",
+  "event_type",
+  "detail"
+ ],
+ "fields": [
+  {
+   "fieldname": "legacy_id",
+   "fieldtype": "Int",
+   "in_standard_filter": 1,
+   "label": "Runtime Record ID",
+   "unique": 1
+  },
+  {
+   "fieldname": "event_section",
+   "fieldtype": "Section Break",
+   "label": "Event"
+  },
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Session",
+   "options": "Straddle Trading Session"
+  },
+  {
+   "fieldname": "session_legacy_id",
+   "fieldtype": "Int",
+   "label": "Session Legacy ID"
+  },
+  {
+   "fieldname": "event_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Event Time"
+  },
+  {
+   "fieldname": "column_break_event",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Event Type"
+  },
+  {
+   "fieldname": "detail",
+   "fieldtype": "Text",
+   "label": "Detail"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Straddle Bot",
+ "name": "Straddle Session Event",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "event_time",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "event_type",
+ "track_changes": 1
+}
