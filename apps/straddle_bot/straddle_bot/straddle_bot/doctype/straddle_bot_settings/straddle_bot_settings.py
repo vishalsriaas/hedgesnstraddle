@@ -10,6 +10,18 @@ class StraddleBotSettings(Document):
 		self.sync_to_legacy_engine()
 
 	def sync_to_legacy_engine(self):
+		try:
+			frappe.db.sql(
+				"""
+				CREATE TABLE IF NOT EXISTS `straddle_config` (
+					`key` VARCHAR(255) PRIMARY KEY,
+					`value` LONGTEXT
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+				"""
+			)
+		except Exception:
+			pass
+
 		keys_map = {
 			"entry_window_open": "WINDOW_START",
 			"entry_window_close": "WINDOW_END",
