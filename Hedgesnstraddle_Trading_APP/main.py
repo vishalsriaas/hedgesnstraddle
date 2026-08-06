@@ -1,5 +1,8 @@
 import logging
+import os
+import sys
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -19,10 +22,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hedgesnstraddle")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    logger.info("Initializing Hedgesnstraddle database and engines...")
+    init_database()
+    straddle_engine.start()
+    hedge_engine.start()
+    logger.info("Hedgesnstraddle Platform Online!")
+    yield
+    # Shutdown logic
+    logger.info("Shutting down Hedgesnstraddle engines...")
+    straddle_engine.stop()
+    hedge_engine.stop()
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Enterprise Zero-Downtime Quantitative Trading Platform"
+    description="Enterprise Zero-Downtime Quantitative Trading Platform",
+    lifespan=lifespan
 )
 
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "static"
@@ -38,20 +56,7 @@ app.include_router(report_router)
 async def serve_index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Initializing Hedgesnstraddle database and engines...")
-    init_database()
-    straddle_engine.start()
-    hedge_engine.start()
-    logger.info("Hedgesnstraddle Platform Online on port 8080!")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Shutting down Hedgesnstraddle engines...")
-    straddle_engine.stop()
-    hedge_engine.stop()
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
