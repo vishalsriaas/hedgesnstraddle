@@ -1,0 +1,268 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "creation": "2026-07-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "runtime_section",
+  "runtime_mode",
+  "bot_enabled",
+  "paper_trading_enabled",
+  "column_break_runtime",
+  "worker_id",
+  "db_path",
+  "dashboard_url",
+  "credentials_section",
+  "binance_api_key",
+  "binance_secret_key",
+  "telegram_token",
+  "telegram_chat_id",
+  "timing_section",
+  "entry_window_open",
+  "entry_window_close",
+  "futures_entry_cutoff",
+  "squareoff_start",
+  "squareoff_end",
+  "futures_squareoff",
+  "expiry_time",
+  "entry_rules_section",
+  "trade_qty",
+  "min_expiry_hours",
+  "min_strike_gap",
+  "max_total_ask",
+  "max_premium_gap",
+  "futures_tp_multiplier",
+  "runtime_tuning_section",
+  "scan_interval_seconds",
+  "retry_timeout_seconds",
+  "futures_leverage",
+  "futures_maintenance_margin_rate",
+  "paper_wallet_usdt",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "runtime_section",
+   "fieldtype": "Section Break",
+   "label": "Runtime"
+  },
+  {
+   "default": "Paper",
+   "fieldname": "runtime_mode",
+   "fieldtype": "Select",
+   "label": "Runtime Mode",
+   "options": "Paper\nLive"
+  },
+  {
+   "default": "0",
+   "fieldname": "bot_enabled",
+   "fieldtype": "Check",
+   "label": "Bot Enabled"
+  },
+  {
+   "default": "1",
+   "fieldname": "paper_trading_enabled",
+   "fieldtype": "Check",
+   "label": "Paper Trading Enabled"
+  },
+  {
+   "fieldname": "column_break_runtime",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "worker_id",
+   "fieldtype": "Data",
+   "label": "Worker ID"
+  },
+  {
+   "fieldname": "db_path",
+   "fieldtype": "Small Text",
+   "label": "Legacy SQLite DB Path"
+  },
+  {
+   "fieldname": "dashboard_url",
+   "fieldtype": "Data",
+   "label": "Legacy Dashboard URL",
+   "options": "URL"
+  },
+  {
+   "fieldname": "credentials_section",
+   "fieldtype": "Section Break",
+   "label": "Credentials"
+  },
+  {
+   "fieldname": "binance_api_key",
+   "fieldtype": "Password",
+   "label": "Binance API Key"
+  },
+  {
+   "fieldname": "binance_secret_key",
+   "fieldtype": "Password",
+   "label": "Binance Secret Key"
+  },
+  {
+   "fieldname": "telegram_token",
+   "fieldtype": "Password",
+   "label": "Telegram Token"
+  },
+  {
+   "fieldname": "telegram_chat_id",
+   "fieldtype": "Data",
+   "label": "Telegram Chat ID"
+  },
+  {
+   "fieldname": "timing_section",
+   "fieldtype": "Section Break",
+   "label": "Timing"
+  },
+  {
+   "default": "05:00:00",
+   "fieldname": "entry_window_open",
+   "fieldtype": "Time",
+   "label": "Entry Window Open"
+  },
+  {
+   "default": "07:00:00",
+   "fieldname": "entry_window_close",
+   "fieldtype": "Time",
+   "label": "Entry Window Close"
+  },
+  {
+   "default": "11:00:00",
+   "fieldname": "futures_entry_cutoff",
+   "fieldtype": "Time",
+   "label": "Futures Entry Cutoff"
+  },
+  {
+   "default": "11:00:00",
+   "fieldname": "squareoff_start",
+   "fieldtype": "Time",
+   "label": "Options Mark Recovery Window"
+  },
+  {
+   "default": "12:00:00",
+   "fieldname": "squareoff_end",
+   "fieldtype": "Time",
+   "label": "Universal Hard Squareoff"
+  },
+  {
+   "default": "12:00:00",
+   "fieldname": "futures_squareoff",
+   "fieldtype": "Time",
+   "label": "Futures Hard Squareoff"
+  },
+  {
+   "default": "13:30:00",
+   "fieldname": "expiry_time",
+   "fieldtype": "Time",
+   "label": "Expiry Time"
+  },
+  {
+   "fieldname": "entry_rules_section",
+   "fieldtype": "Section Break",
+   "label": "Entry Rules"
+  },
+  {
+   "default": "10",
+   "fieldname": "trade_qty",
+   "fieldtype": "Float",
+   "label": "BTC Quantity Per Leg"
+  },
+  {
+   "default": "6.0",
+   "fieldname": "min_expiry_hours",
+   "fieldtype": "Float",
+   "label": "Minimum Expiry Hours"
+  },
+  {
+   "default": "0",
+   "fieldname": "min_strike_gap",
+   "fieldtype": "Currency",
+   "label": "Minimum Strike Gap"
+  },
+  {
+   "default": "400",
+   "fieldname": "max_total_ask",
+   "fieldtype": "Currency",
+   "label": "Maximum Combined Mark Premium"
+  },
+  {
+   "default": "100",
+   "fieldname": "max_premium_gap",
+   "fieldtype": "Currency",
+   "label": "Maximum Premium Gap"
+  },
+  {
+   "default": "2",
+   "fieldname": "futures_tp_multiplier",
+   "fieldtype": "Float",
+   "label": "Futures TP Premium Multiplier"
+  },
+  {
+   "fieldname": "runtime_tuning_section",
+   "fieldtype": "Section Break",
+   "label": "Runtime Tuning"
+  },
+  {
+   "default": "2.0",
+   "fieldname": "scan_interval_seconds",
+   "fieldtype": "Float",
+   "label": "Scan Interval Seconds"
+  },
+  {
+   "default": "60",
+   "fieldname": "retry_timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Retry Timeout Seconds"
+  },
+  {
+   "default": "100",
+   "fieldname": "futures_leverage",
+   "fieldtype": "Int",
+   "label": "Futures Leverage"
+  },
+  {
+   "default": "0.004",
+   "fieldname": "futures_maintenance_margin_rate",
+   "fieldtype": "Float",
+   "label": "Futures Maintenance Margin Rate"
+  },
+  {
+   "default": "10000",
+   "fieldname": "paper_wallet_usdt",
+   "fieldtype": "Currency",
+   "label": "Paper Wallet USDT"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Straddle Bot",
+ "name": "Straddle Bot Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

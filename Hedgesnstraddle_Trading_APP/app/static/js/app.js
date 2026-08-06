@@ -78,21 +78,20 @@ function switchNav(viewId, el) {
     if (targetView) targetView.style.display = "block";
     if (el) el.classList.add("active");
 
-    // Update Header Title
     const titleMap = {
-        'straddle-dashboard': 'Straddle Bot Dashboard',
+        'straddle-dashboard': 'Straddle Live Dashboard',
         'straddle-config': 'Straddle Bot Settings',
         'straddle-sessions': 'Straddle Trading Sessions',
-        'straddle-orders': 'Straddle Trade Orders & Fills',
+        'straddle-orders': 'Straddle Orders & Fills',
         'straddle-ledger': 'Straddle Wallet Ledger',
-        'hedge-dashboard': 'Hedge Trader Dashboard',
-        'hedge-strategies': 'Hedge Strategy Config Rules',
+        'hedge-dashboard': 'Hedge Live Dashboard',
+        'hedge-strategies': 'Hedge Strategy Config',
         'hedge-config': 'Hedge Engine Settings',
         'hedge-sessions': 'Hedge Trading Sessions',
         'hedge-positions': 'Hedge Open Positions',
         'hedge-events': 'Hedge Macro Events',
-        'audit-logs': 'Audit History & System Health',
-        'trade-reports': 'Trade Reports CSV Export'
+        'audit-logs': 'Audit Logs & Health',
+        'trade-reports': 'Trade Reports CSV'
     };
     document.getElementById("current-view-title").innerText = titleMap[viewId] || 'Hedgesnstraddle Control Panel';
 
@@ -108,14 +107,27 @@ async function fetchSnapshot() {
             const data = await res.json();
             document.getElementById("ticker-btc-mark").innerText = `$${data.market.btc_mark_price.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             document.getElementById("ticker-btc-spot").innerText = `$${data.market.btc_spot_price.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById("stat-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById("stat-straddle-state").innerText = data.straddle.state;
-            document.getElementById("stat-hedge-state").innerText = data.hedge.state;
 
-            // Render Straddle Dashboard Sessions Table
+            // Update Straddle Live Dashboard KPIs
+            document.getElementById("straddle-dash-state").innerText = data.straddle.state;
+            const activeStraddle = data.straddle.active_session;
+            if (activeStraddle) {
+                document.getElementById("straddle-dash-premium").innerText = `$${(activeStraddle.net_straddle_ask || 0).toFixed(2)}`;
+                document.getElementById("straddle-dash-opt-pnl").innerText = `$${(activeStraddle.pnl_realized || 0).toFixed(2)}`;
+            }
+
+            // Update Hedge Live Dashboard KPIs
+            document.getElementById("hedge-dash-state").innerText = data.hedge.state;
+            const activeHedge = data.hedge.active_session;
+            if (activeHedge) {
+                document.getElementById("hedge-dash-bull").innerText = `$${(activeHedge.bull_entry || 0).toLocaleString()} / $${(activeHedge.bull_exit || 0).toLocaleString()}`;
+                document.getElementById("hedge-dash-bear").innerText = `$${(activeHedge.bear_entry || 0).toLocaleString()} / $${(activeHedge.bear_exit || 0).toLocaleString()}`;
+                document.getElementById("hedge-dash-pnl").innerText = `$${(activeHedge.realized_pnl || 0).toFixed(2)}`;
+            }
+
+            // Render Straddle Session Tables
             const straddleBody = document.getElementById("straddle-sessions-table-body");
             const straddleViewBody = document.getElementById("straddle-sessions-view-body");
-
             if (data.straddle.history && data.straddle.history.length > 0) {
                 const rowsHtml = data.straddle.history.map(s => `
                     <tr>
@@ -134,10 +146,11 @@ async function fetchSnapshot() {
                 if (straddleViewBody) straddleViewBody.innerHTML = rowsHtml;
             }
 
-            // Render Hedge Dashboard Sessions Table
+            // Render Hedge Session Tables
             const hedgeBody = document.getElementById("hedge-sessions-table-body");
+            const hedgeViewBody = document.getElementById("hedge-sessions-view-body");
             if (data.hedge.history && data.hedge.history.length > 0) {
-                hedgeBody.innerHTML = data.hedge.history.map(h => `
+                const hedgeRowsHtml = data.hedge.history.map(h => `
                     <tr>
                         <td><b>#${h.id}</b></td>
                         <td>${h.symbol}</td>
@@ -150,6 +163,8 @@ async function fetchSnapshot() {
                         <td>${h.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
+                if (hedgeBody) hedgeBody.innerHTML = hedgeRowsHtml;
+                if (hedgeViewBody) hedgeViewBody.innerHTML = hedgeRowsHtml;
             }
         }
     } catch (err) {

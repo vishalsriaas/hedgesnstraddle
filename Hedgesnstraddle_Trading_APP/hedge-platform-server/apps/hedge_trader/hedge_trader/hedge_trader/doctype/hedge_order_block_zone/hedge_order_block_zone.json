@@ -1,0 +1,181 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:zone_key",
+ "creation": "2026-07-15 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "zone_section",
+  "zone_key",
+  "session",
+  "trader_name",
+  "timeframe",
+  "zone_type",
+  "status",
+  "column_break_zone",
+  "born_ts",
+  "created_ist",
+  "last_seen_ist",
+  "consumed_ist",
+  "price_section",
+  "zone_top",
+  "zone_bottom",
+  "zone_mid",
+  "zone_score",
+  "zone_grade",
+  "current_price",
+  "notes",
+  "snapshot_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "zone_section",
+   "fieldtype": "Section Break",
+   "label": "Zone"
+  },
+  {
+   "fieldname": "zone_key",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Zone Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "session",
+   "fieldtype": "Link",
+   "label": "Session",
+   "options": "Hedge Trading Session"
+  },
+  {
+   "fieldname": "trader_name",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Trader Name"
+  },
+  {
+   "fieldname": "timeframe",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Timeframe",
+   "options": "5m\n15m\n1h\n4h"
+  },
+  {
+   "fieldname": "zone_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Zone Type",
+   "options": "Bullish\nBearish"
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nConsumed\nExpired\nSnapshot"
+  },
+  {
+   "fieldname": "column_break_zone",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "born_ts",
+   "fieldtype": "Int",
+   "label": "Born Timestamp"
+  },
+  {
+   "fieldname": "created_ist",
+   "fieldtype": "Datetime",
+   "label": "Created IST"
+  },
+  {
+   "fieldname": "last_seen_ist",
+   "fieldtype": "Datetime",
+   "label": "Last Seen IST"
+  },
+  {
+   "fieldname": "consumed_ist",
+   "fieldtype": "Datetime",
+   "label": "Consumed IST"
+  },
+  {
+   "fieldname": "price_section",
+   "fieldtype": "Section Break",
+   "label": "Price"
+  },
+  {
+   "fieldname": "zone_top",
+   "fieldtype": "Currency",
+   "label": "Zone Top"
+  },
+  {
+   "fieldname": "zone_bottom",
+   "fieldtype": "Currency",
+   "label": "Zone Bottom"
+  },
+  {
+   "fieldname": "zone_mid",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Zone Mid"
+  },
+  {
+   "fieldname": "zone_score",
+   "fieldtype": "Float",
+   "label": "Zone Score"
+  },
+  {
+   "fieldname": "zone_grade",
+   "fieldtype": "Data",
+   "label": "Zone Grade"
+  },
+  {
+   "fieldname": "current_price",
+   "fieldtype": "Currency",
+   "label": "Current Price"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "snapshot_json",
+   "fieldtype": "Code",
+   "label": "Snapshot JSON",
+   "options": "JSON"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Hedge Trader",
+ "name": "Hedge Order Block Zone",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "zone_key",
+ "track_changes": 1
+}

@@ -1,0 +1,245 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:strategy_name",
+ "creation": "2026-07-15 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "identity_section",
+  "strategy_name",
+  "strategy_key",
+  "enabled",
+  "locked",
+  "column_break_identity",
+  "strategy_type",
+  "direction",
+  "executor_name",
+  "window_section",
+  "trade_start_h",
+  "trade_start_m",
+  "trade_end_h",
+  "trade_end_m",
+  "column_break_window",
+  "force_close_h",
+  "force_close_m",
+  "skip_weekends",
+  "blackout_dates",
+  "risk_section",
+  "contract_qty",
+  "max_premium",
+  "max_time_value",
+  "price_diff_percent",
+  "column_break_risk",
+  "session_pnl_target",
+  "partial_profit_ratio",
+  "partial_tp_multiplier",
+  "rebuy_mode",
+  "extra_config_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "identity_section",
+   "fieldtype": "Section Break",
+   "label": "Identity"
+  },
+  {
+   "fieldname": "strategy_name",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Strategy Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "strategy_key",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Strategy Key",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "default": "0",
+   "fieldname": "locked",
+   "fieldtype": "Check",
+   "label": "Locked"
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "strategy_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Strategy Type",
+   "options": "Directional Hedge"
+  },
+  {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Direction",
+   "options": "\nBullish\nBearish\nNeutral"
+  },
+  {
+   "fieldname": "executor_name",
+   "fieldtype": "Data",
+   "label": "Executor Name"
+  },
+  {
+   "fieldname": "window_section",
+   "fieldtype": "Section Break",
+   "label": "Window"
+  },
+  {
+   "default": "5",
+   "fieldname": "trade_start_h",
+   "fieldtype": "Int",
+   "label": "Trade Start Hour"
+  },
+  {
+   "default": "0",
+   "fieldname": "trade_start_m",
+   "fieldtype": "Int",
+   "label": "Trade Start Minute"
+  },
+  {
+   "default": "7",
+   "fieldname": "trade_end_h",
+   "fieldtype": "Int",
+   "label": "Trade End Hour"
+  },
+  {
+   "default": "0",
+   "fieldname": "trade_end_m",
+   "fieldtype": "Int",
+   "label": "Trade End Minute"
+  },
+  {
+   "fieldname": "column_break_window",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "13",
+   "fieldname": "force_close_h",
+   "fieldtype": "Int",
+   "label": "Force Close Hour"
+  },
+  {
+   "default": "0",
+   "fieldname": "force_close_m",
+   "fieldtype": "Int",
+   "label": "Force Close Minute"
+  },
+  {
+   "default": "1",
+   "fieldname": "skip_weekends",
+   "fieldtype": "Check",
+   "label": "Skip Weekends"
+  },
+  {
+   "fieldname": "blackout_dates",
+   "fieldtype": "Small Text",
+   "label": "Blackout Dates"
+  },
+  {
+   "fieldname": "risk_section",
+   "fieldtype": "Section Break",
+   "label": "Risk"
+  },
+  {
+   "default": "1",
+   "fieldname": "contract_qty",
+   "fieldtype": "Float",
+   "label": "Contract Quantity"
+  },
+  {
+   "default": "250",
+   "fieldname": "max_premium",
+   "fieldtype": "Currency",
+   "label": "Max Premium"
+  },
+  {
+   "default": "229",
+   "fieldname": "max_time_value",
+   "fieldtype": "Currency",
+   "label": "Max Time Value"
+  },
+  {
+   "default": "4",
+   "fieldname": "price_diff_percent",
+   "fieldtype": "Percent",
+   "label": "Price Diff Percent"
+  },
+  {
+   "fieldname": "column_break_risk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "600",
+   "fieldname": "session_pnl_target",
+   "fieldtype": "Currency",
+   "label": "Session PnL Target"
+  },
+  {
+   "default": "1.1",
+   "fieldname": "partial_profit_ratio",
+   "fieldtype": "Float",
+   "label": "Partial Profit Ratio"
+  },
+  {
+   "default": "1.1",
+   "fieldname": "partial_tp_multiplier",
+   "fieldtype": "Float",
+   "label": "Futures Booking Multiplier"
+  },
+  {
+   "fieldname": "rebuy_mode",
+   "fieldtype": "Select",
+   "label": "Rebuy Mode",
+   "options": "\ntv_based\navg"
+  },
+  {
+   "fieldname": "extra_config_json",
+   "fieldtype": "Code",
+   "label": "Extra Config JSON",
+   "options": "JSON"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Hedge Trader",
+ "name": "Hedge Strategy Config",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "strategy_name",
+ "track_changes": 1
+}

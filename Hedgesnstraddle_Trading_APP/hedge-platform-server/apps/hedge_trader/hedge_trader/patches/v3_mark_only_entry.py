@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+import frappe
+
+
+def execute():
+	values = {
+		"trade_start_h": 4,
+		"trade_start_m": 0,
+		"trade_end_h": 6,
+		"trade_end_m": 0,
+		"contract_qty": 10,
+		"max_premium": 220,
+		"max_time_value": 219,
+		"price_diff_percent": 0,
+		"force_close_h": 12,
+		"force_close_m": 0,
+	}
+	for strategy_name in ("Bullish Hedge", "Bearish Hedge"):
+		if frappe.db.exists("Hedge Strategy Config", strategy_name):
+			frappe.db.set_value(
+				"Hedge Strategy Config",
+				strategy_name,
+				values,
+				update_modified=False,
+			)
