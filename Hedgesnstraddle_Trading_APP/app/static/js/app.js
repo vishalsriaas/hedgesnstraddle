@@ -232,9 +232,7 @@ async function saveStraddleConfig(e) {
 
 const HEDGE_FIELDS = [
     "RUNTIME_MODE", "ENGINE_ENABLED", "PAPER_TRADING_ENABLED", "GLOBAL_PAUSE",
-    "MAX_OPTION_SPEND", "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC",
-    "SYMBOL", "TRADE_START_H", "TRADE_START_M", "TRADE_END_H", "TRADE_END_M",
-    "FORCE_CLOSE_H", "FORCE_CLOSE_M", "LEVERAGE", "TRADE_QTY", "BULL_TARGET_PCT", "BEAR_TARGET_PCT"
+    "MAX_OPTION_SPEND", "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC"
 ];
 
 async function loadHedgeConfig() {
@@ -247,6 +245,27 @@ async function loadHedgeConfig() {
             for (let [k, v] of Object.entries(data.active)) {
                 const input = document.getElementById(`cfg_hedge_${k}`);
                 if (input) input.value = v;
+            }
+
+            // Render Hedge Strategy Cards (Bullish Hedge & Bearish Hedge Rules)
+            const grid = document.getElementById("hedge-strategy-cards-grid");
+            if (data.strategies && data.strategies.length > 0) {
+                grid.innerHTML = data.strategies.map(s => `
+                    <div class="stat-card" style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div style="font-weight: 700; font-size: 16px;">${s.strategy_name}</div>
+                            <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 8px;">
+                            <div><b>Direction:</b> <span style="color: var(--primary);">${s.direction}</span></div>
+                            <div><b>Trade Window Open:</b> ${s.trade_start}</div>
+                            <div><b>Trade Window Close:</b> ${s.trade_end}</div>
+                            <div><b>Force Close Squareoff:</b> ${s.force_close}</div>
+                            <div><b>Contract Qty:</b> ${s.contract_qty} BTC</div>
+                            <div><b>Max Premium Limit:</b> $${s.max_premium}</div>
+                        </div>
+                    </div>
+                `).join("");
             }
         }
     } catch (err) {

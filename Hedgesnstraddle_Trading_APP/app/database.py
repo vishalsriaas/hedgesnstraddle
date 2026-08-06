@@ -105,33 +105,50 @@ def init_database():
             if not existing:
                 db.add(HedgeConfig(key=k, value=str(v)))
 
-        # 4. Default Hedge Strategy Config Seed (Includes Window Start/End & Risk Parameters)
-        default_strategy = db.query(HedgeStrategyConfig).filter(HedgeStrategyConfig.strategy_name == "Default Directional Hedge").first()
-        if not default_strategy:
-            strat = HedgeStrategyConfig(
-                strategy_name="Default Directional Hedge",
-                strategy_key="directional_hedge",
-                enabled=True,
-                locked=False,
-                strategy_type="Directional Hedge",
-                direction="Bullish",
-                executor_name="default_executor",
-                trade_start_h=5,
-                trade_start_m=0,
-                trade_end_h=7,
-                trade_end_m=0,
-                force_close_h=13,
-                force_close_m=0,
-                skip_weekends=True,
-                contract_qty=1.0,
-                max_premium=250.0,
-                max_time_value=229.0,
-                price_diff_percent=4.0,
-                partial_profit_ratio=1.1,
-                partial_tp_multiplier=1.1,
-                rebuy_mode="tv_based"
-            )
-            db.add(strat)
+        # 4. Seed Bullish Hedge & Bearish Hedge Strategy Config Rules
+        strategies = [
+            {
+                "strategy_name": "Bullish Hedge",
+                "strategy_key": "bullish_hedge",
+                "direction": "Bullish",
+                "trade_start_h": 5, "trade_start_m": 0,
+                "trade_end_h": 7, "trade_end_m": 30,
+                "force_close_h": 12, "force_close_m": 0,
+                "contract_qty": 10.0,
+                "max_premium": 220.0,
+                "max_time_value": 219.0
+            },
+            {
+                "strategy_name": "Bearish Hedge",
+                "strategy_key": "bearish_hedge",
+                "direction": "Bearish",
+                "trade_start_h": 5, "trade_start_m": 0,
+                "trade_end_h": 7, "trade_end_m": 30,
+                "force_close_h": 12, "force_close_m": 0,
+                "contract_qty": 10.0,
+                "max_premium": 220.0,
+                "max_time_value": 219.0
+            }
+        ]
+        for s in strategies:
+            existing = db.query(HedgeStrategyConfig).filter(HedgeStrategyConfig.strategy_name == s["strategy_name"]).first()
+            if not existing:
+                strat = HedgeStrategyConfig(
+                    strategy_name=s["strategy_name"],
+                    strategy_key=s["strategy_key"],
+                    enabled=True,
+                    direction=s["direction"],
+                    trade_start_h=s["trade_start_h"],
+                    trade_start_m=s["trade_start_m"],
+                    trade_end_h=s["trade_end_h"],
+                    trade_end_m=s["trade_end_m"],
+                    force_close_h=s["force_close_h"],
+                    force_close_m=s["force_close_m"],
+                    contract_qty=s["contract_qty"],
+                    max_premium=s["max_premium"],
+                    max_time_value=s["max_time_value"]
+                )
+                db.add(strat)
 
         db.commit()
     except Exception as e:

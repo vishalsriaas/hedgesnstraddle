@@ -81,7 +81,7 @@
             <div class="stat-card">
                 <div class="stat-title">Hedge Trader Engine State</div>
                 <div class="stat-value" id="stat-hedge-state" style="color: var(--success);">IDLE</div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Dual-Leg Bull & Bear</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Bullish & Bearish Dual-Leg</div>
             </div>
 
             <div class="stat-card">
@@ -324,12 +324,19 @@
             </div>
         </div>
 
-        <!-- Tab 4: Hedge Full Settings -->
+        <!-- Tab 4: Hedge Full Settings & Strategy Rules -->
         <div id="tab-hedge-config" class="tab-content" style="display: none;">
+            <div class="glass-panel" style="margin-bottom: 24px;">
+                <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Strategy Config Rules (Bullish & Bearish Strategy Windows)</h3>
+                <div id="hedge-strategy-cards-grid" class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));">
+                    <!-- Loaded dynamically via JS -->
+                </div>
+            </div>
+
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 20px;">Hedge Trader Complete Parameters & Strategy Window</h3>
+                <h3 style="font-size: 18px; margin-bottom: 20px;">Hedge Global Engine Parameters</h3>
                 <form id="hedge-config-form">
-                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">1. Global Engine & Risk Parameters</h4>
+                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">Global Engine & Risk Controls</h4>
                     <div class="form-grid" style="margin-bottom: 24px;">
                         <div class="form-group">
                             <label>Runtime Mode</label>
@@ -362,54 +369,6 @@
                         <div class="form-group">
                             <label>Fill Timeout Sec</label>
                             <input type="text" id="cfg_hedge_FILL_TIMEOUT_SEC" value="5">
-                        </div>
-                    </div>
-
-                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">2. Hedge Strategy Window & Targets</h4>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Trade Symbol</label>
-                            <input type="text" id="cfg_hedge_SYMBOL" value="BTCUSDT">
-                        </div>
-                        <div class="form-group">
-                            <label>Trade Start Hour (0-23)</label>
-                            <input type="text" id="cfg_hedge_TRADE_START_H" value="5">
-                        </div>
-                        <div class="form-group">
-                            <label>Trade Start Minute (0-59)</label>
-                            <input type="text" id="cfg_hedge_TRADE_START_M" value="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Trade End Hour (0-23)</label>
-                            <input type="text" id="cfg_hedge_TRADE_END_H" value="7">
-                        </div>
-                        <div class="form-group">
-                            <label>Trade End Minute (0-59)</label>
-                            <input type="text" id="cfg_hedge_TRADE_END_M" value="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Force Close Hour (0-23)</label>
-                            <input type="text" id="cfg_hedge_FORCE_CLOSE_H" value="13">
-                        </div>
-                        <div class="form-group">
-                            <label>Force Close Minute (0-59)</label>
-                            <input type="text" id="cfg_hedge_FORCE_CLOSE_M" value="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Leverage</label>
-                            <input type="text" id="cfg_hedge_LEVERAGE" value="10">
-                        </div>
-                        <div class="form-group">
-                            <label>Trade Quantity (BTC)</label>
-                            <input type="text" id="cfg_hedge_TRADE_QTY" value="0.05">
-                        </div>
-                        <div class="form-group">
-                            <label>Bull Target %</label>
-                            <input type="text" id="cfg_hedge_BULL_TARGET_PCT" value="0.5">
-                        </div>
-                        <div class="form-group">
-                            <label>Bear Target %</label>
-                            <input type="text" id="cfg_hedge_BEAR_TARGET_PCT" value="0.5">
                         </div>
                     </div>
 
