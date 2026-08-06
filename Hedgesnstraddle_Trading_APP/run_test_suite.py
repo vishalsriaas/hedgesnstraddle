@@ -5,7 +5,7 @@ import urllib.request
 import urllib.parse
 import time
 
-BASE_URL = "http://127.0.0.1:8085"
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8088")
 
 def make_req(url, method="GET", data=None, headers=None):
     if headers is None:
@@ -34,13 +34,13 @@ def make_req(url, method="GET", data=None, headers=None):
 
 def run_suite():
     print("=" * 65)
-    print("HEDGESNSTRADDLE COMPREHENSIVE AUTOMATED TEST SUITE")
+    print(f"HEDGESNSTRADDLE COMPREHENSIVE AUTOMATED TEST SUITE ({BASE_URL})")
     print("=" * 65)
 
     # 1. Health Check
     status, res = make_req(f"{BASE_URL}/docs")
     if status != 200:
-        print(f"[TEST 1 FAILED] Could not connect to API Gateway on port 8085: HTTP {status}")
+        print(f"[TEST 1 FAILED] Could not connect to API Gateway: HTTP {status}")
         return False
     print(f"[TEST 1] API Gateway Status: HTTP {status} - OK")
 
