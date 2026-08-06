@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
         initApp();
     } else {
         document.getElementById("login-modal").style.display = "flex";
+        document.getElementById("app-sidebar").style.display = "none";
         document.getElementById("app-container").style.display = "none";
     }
 
@@ -56,6 +57,7 @@ function logout() {
 
 function initApp() {
     document.getElementById("login-modal").style.display = "none";
+    document.getElementById("app-sidebar").style.display = "flex";
     document.getElementById("app-container").style.display = "block";
 
     document.getElementById("user-display-name").innerText = localStorage.getItem("username") || "Admin";
@@ -66,6 +68,35 @@ function initApp() {
     loadStraddleConfig();
     loadHedgeConfig();
     loadAuditLogs();
+}
+
+function switchNav(viewId, el) {
+    document.querySelectorAll(".content-view").forEach(v => v.style.display = "none");
+    document.querySelectorAll(".nav-link").forEach(n => n.classList.remove("active"));
+
+    const targetView = document.getElementById(`view-${viewId}`);
+    if (targetView) targetView.style.display = "block";
+    if (el) el.classList.add("active");
+
+    // Update Header Title
+    const titleMap = {
+        'straddle-dashboard': 'Straddle Bot Dashboard',
+        'straddle-config': 'Straddle Bot Settings',
+        'straddle-sessions': 'Straddle Trading Sessions',
+        'straddle-orders': 'Straddle Trade Orders & Fills',
+        'straddle-ledger': 'Straddle Wallet Ledger',
+        'hedge-dashboard': 'Hedge Trader Dashboard',
+        'hedge-strategies': 'Hedge Strategy Config Rules',
+        'hedge-config': 'Hedge Engine Settings',
+        'hedge-sessions': 'Hedge Trading Sessions',
+        'hedge-positions': 'Hedge Open Positions',
+        'hedge-events': 'Hedge Macro Events',
+        'audit-logs': 'Audit History & System Health',
+        'trade-reports': 'Trade Reports CSV Export'
+    };
+    document.getElementById("current-view-title").innerText = titleMap[viewId] || 'Hedgesnstraddle Control Panel';
+
+    if (viewId === "audit-logs") loadAuditLogs();
 }
 
 async function fetchSnapshot() {
@@ -83,8 +114,10 @@ async function fetchSnapshot() {
 
             // Render Straddle Dashboard Sessions Table
             const straddleBody = document.getElementById("straddle-sessions-table-body");
+            const straddleViewBody = document.getElementById("straddle-sessions-view-body");
+
             if (data.straddle.history && data.straddle.history.length > 0) {
-                straddleBody.innerHTML = data.straddle.history.map(s => `
+                const rowsHtml = data.straddle.history.map(s => `
                     <tr>
                         <td><b>#${s.id}</b></td>
                         <td>${s.expiry_sym || s.expiry_dt}</td>
@@ -97,6 +130,8 @@ async function fetchSnapshot() {
                         <td>${s.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
+                if (straddleBody) straddleBody.innerHTML = rowsHtml;
+                if (straddleViewBody) straddleViewBody.innerHTML = rowsHtml;
             }
 
             // Render Hedge Dashboard Sessions Table
@@ -139,16 +174,6 @@ function connectWebSocket() {
     ws.onclose = () => {
         setTimeout(connectWebSocket, 3000);
     };
-}
-
-function switchTab(tabId) {
-    document.querySelectorAll(".tab-content").forEach(el => el.style.display = "none");
-    document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
-
-    document.getElementById(`tab-${tabId}`).style.display = "block";
-    event.target.classList.add("active");
-
-    if (tabId === "audit-logs") loadAuditLogs();
 }
 
 async function emergencySquareoff(algo) {
@@ -247,7 +272,7 @@ async function loadHedgeConfig() {
                 if (input) input.value = v;
             }
 
-            // Render Hedge Strategy Cards (Bullish Hedge & Bearish Hedge Rules)
+            // Render Hedge Strategy Cards
             const grid = document.getElementById("hedge-strategy-cards-grid");
             if (data.strategies && data.strategies.length > 0) {
                 grid.innerHTML = data.strategies.map(s => `

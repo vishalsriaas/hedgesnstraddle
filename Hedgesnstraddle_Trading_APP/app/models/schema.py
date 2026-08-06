@@ -1,10 +1,10 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, func
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, func
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
 # ---------------------------------------------------------
-# 1. USER & AUDIT LOGGING
+# 1. USER & SYSTEM AUDIT LOGS
 # ---------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
@@ -42,7 +42,7 @@ class PendingConfig(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ---------------------------------------------------------
-# 2. CONFIGURATION TABLES
+# 2. STRADDLE BOT DOCTYPES (10 DOCTYPES)
 # ---------------------------------------------------------
 class StraddleConfig(Base):
     __tablename__ = "straddle_config"
@@ -51,44 +51,16 @@ class StraddleConfig(Base):
     value = Column(Text, nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-class HedgeConfig(Base):
-    __tablename__ = "hedge_config"
-
-    key = Column(String(255), primary_key=True)
-    value = Column(Text, nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-class HedgeStrategyConfig(Base):
-    __tablename__ = "hedge_strategy_configs"
+class StraddleConfigItem(Base):
+    __tablename__ = "straddle_config_items"
 
     id = Column(Integer, primary_key=True, index=True)
-    strategy_name = Column(String(100), unique=True, nullable=False)
-    strategy_key = Column(String(100), nullable=False)
-    enabled = Column(Boolean, default=True)
-    locked = Column(Boolean, default=False)
-    strategy_type = Column(String(50), default="Directional Hedge")
-    direction = Column(String(50), default="Bullish")
-    executor_name = Column(String(100), nullable=True)
-    trade_start_h = Column(Integer, default=5)
-    trade_start_m = Column(Integer, default=0)
-    trade_end_h = Column(Integer, default=7)
-    trade_end_m = Column(Integer, default=0)
-    force_close_h = Column(Integer, default=13)
-    force_close_m = Column(Integer, default=0)
-    skip_weekends = Column(Boolean, default=True)
-    blackout_dates = Column(Text, nullable=True)
-    contract_qty = Column(Float, default=1.0)
-    max_premium = Column(Float, default=250.0)
-    max_time_value = Column(Float, default=229.0)
-    price_diff_percent = Column(Float, default=4.0)
-    partial_profit_ratio = Column(Float, default=1.1)
-    partial_tp_multiplier = Column(Float, default=1.1)
-    rebuy_mode = Column(String(50), default="tv_based")
-    extra_config_json = Column(Text, nullable=True)
+    key = Column(String(255), unique=True, nullable=False)
+    value = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    is_secret = Column(Boolean, default=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
-# ---------------------------------------------------------
-# 3. STRADDLE BOT DOCTYPES & MODELS
-# ---------------------------------------------------------
 class StraddleSession(Base):
     __tablename__ = "straddle_sessions"
 
@@ -197,8 +169,43 @@ class StraddleRuntimeCommand(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # ---------------------------------------------------------
-# 4. HEDGE TRADER DOCTYPES & MODELS
+# 3. HEDGE TRADER DOCTYPES (12 DOCTYPES)
 # ---------------------------------------------------------
+class HedgeConfig(Base):
+    __tablename__ = "hedge_config"
+
+    key = Column(String(255), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class HedgeStrategyConfig(Base):
+    __tablename__ = "hedge_strategy_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    strategy_name = Column(String(100), unique=True, nullable=False)
+    strategy_key = Column(String(100), nullable=False)
+    enabled = Column(Boolean, default=True)
+    locked = Column(Boolean, default=False)
+    strategy_type = Column(String(50), default="Directional Hedge")
+    direction = Column(String(50), default="Bullish")
+    executor_name = Column(String(100), nullable=True)
+    trade_start_h = Column(Integer, default=5)
+    trade_start_m = Column(Integer, default=0)
+    trade_end_h = Column(Integer, default=7)
+    trade_end_m = Column(Integer, default=0)
+    force_close_h = Column(Integer, default=13)
+    force_close_m = Column(Integer, default=0)
+    skip_weekends = Column(Boolean, default=True)
+    blackout_dates = Column(Text, nullable=True)
+    contract_qty = Column(Float, default=1.0)
+    max_premium = Column(Float, default=250.0)
+    max_time_value = Column(Float, default=229.0)
+    price_diff_percent = Column(Float, default=4.0)
+    partial_profit_ratio = Column(Float, default=1.1)
+    partial_tp_multiplier = Column(Float, default=1.1)
+    rebuy_mode = Column(String(50), default="tv_based")
+    extra_config_json = Column(Text, nullable=True)
+
 class HedgeSession(Base):
     __tablename__ = "hedge_sessions"
 
