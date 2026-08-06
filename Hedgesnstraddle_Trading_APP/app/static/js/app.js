@@ -60,7 +60,7 @@ function initApp() {
     document.getElementById("app-sidebar").style.display = "flex";
     document.getElementById("app-container").style.display = "block";
 
-    document.getElementById("user-display-name").innerText = localStorage.getItem("username") || "Admin";
+    document.getElementById("user-display-name").innerText = localStorage.getItem("username") || "Admin User";
     document.getElementById("user-display-role").innerText = (localStorage.getItem("role") || "ADMIN").toUpperCase();
 
     fetchSnapshot();
@@ -79,19 +79,19 @@ function switchNav(viewId, el) {
     if (el) el.classList.add("active");
 
     const titleMap = {
-        'straddle-dashboard': 'Straddle Live Dashboard',
+        'straddle-dashboard': 'Live Straddle Dashboard',
         'straddle-config': 'Straddle Bot Settings',
         'straddle-sessions': 'Straddle Trading Sessions',
-        'straddle-orders': 'Straddle Orders & Fills',
+        'straddle-orders': 'Straddle Trade Orders & Fills',
         'straddle-ledger': 'Straddle Wallet Ledger',
-        'hedge-dashboard': 'Hedge Live Dashboard',
+        'hedge-dashboard': 'Live Hedge Dashboard',
         'hedge-strategies': 'Hedge Strategy Config',
         'hedge-config': 'Hedge Engine Settings',
         'hedge-sessions': 'Hedge Trading Sessions',
         'hedge-positions': 'Hedge Open Positions',
         'hedge-events': 'Hedge Macro Events',
-        'audit-logs': 'Audit Logs & Health',
-        'trade-reports': 'Trade Reports CSV'
+        'audit-logs': 'Config Audit Logs & Health',
+        'trade-reports': 'CSV Trade Reports Export'
     };
     document.getElementById("current-view-title").innerText = titleMap[viewId] || 'Hedgesnstraddle Control Panel';
 
@@ -111,7 +111,7 @@ async function fetchSnapshot() {
             document.getElementById("ticker-btc-mark").innerText = `$${btcMark.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             document.getElementById("ticker-btc-spot").innerText = `$${btcSpot.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
-            // 1. Update Straddle Replica Tiles & Legs
+            // Update Straddle Replica Tiles
             const activeStraddle = data.straddle.active_session;
             if (activeStraddle) {
                 const pnl = activeStraddle.pnl_realized || 0;
@@ -130,7 +130,7 @@ async function fetchSnapshot() {
             }
             document.getElementById("straddle-hero-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
-            // 2. Update Hedge Replica Hero Tiles
+            // Update Hedge Replica Hero Tiles
             const activeHedge = data.hedge.active_session;
             if (activeHedge) {
                 document.getElementById("hedge-hero-bull").innerText = `LONG @ $${(activeHedge.bull_entry || (btcSpot - 50)).toLocaleString()}`;
@@ -151,7 +151,7 @@ async function fetchSnapshot() {
                         <td>${s.call_strike || '-'}</td>
                         <td>${s.put_strike || '-'}</td>
                         <td>$${(s.net_straddle_ask || 0).toFixed(2)}</td>
-                        <td style="color: ${s.pnl_realized >= 0 ? 'var(--green)' : 'var(--red)'};">$${s.pnl_realized.toFixed(2)}</td>
+                        <td style="color: ${s.pnl_realized >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${s.pnl_realized.toFixed(2)}</td>
                         <td>${s.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
@@ -171,7 +171,7 @@ async function fetchSnapshot() {
                         <td>$${(h.bear_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bull_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bear_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td style="color: ${h.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'};">$${h.realized_pnl.toFixed(2)}</td>
+                        <td style="color: ${h.realized_pnl >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${h.realized_pnl.toFixed(2)}</td>
                         <td>${h.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
@@ -303,18 +303,18 @@ async function loadHedgeConfig() {
             const grid = document.getElementById("hedge-strategy-cards-grid");
             if (data.strategies && data.strategies.length > 0) {
                 grid.innerHTML = data.strategies.map(s => `
-                    <div class="hero-tile" style="background: rgba(13,15,26,0.6); border: 1px solid var(--border);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <div style="font-weight: 700; font-size: 15px;">${s.strategy_name}</div>
+                    <div class="hero-tile">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                            <div style="font-weight: 700; font-size: 15px; color: var(--text-primary);">${s.strategy_name}</div>
                             <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
                         </div>
-                        <div style="font-size: 12px; color: var(--dim); display: flex; flex-direction: column; gap: 6px; font-family: var(--font-mono);">
-                            <div><b>Direction:</b> <span style="color: var(--cyan);">${s.direction}</span></div>
-                            <div><b>Trade Window Open:</b> ${s.trade_start}</div>
-                            <div><b>Trade Window Close:</b> ${s.trade_end}</div>
-                            <div><b>Force Close Squareoff:</b> ${s.force_close}</div>
-                            <div><b>Contract Qty:</b> ${s.contract_qty} BTC</div>
-                            <div><b>Max Premium Limit:</b> $${s.max_premium}</div>
+                        <div style="font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono);">
+                            <div style="display: flex; justify-content: space-between;"><span>Direction:</span> <span style="color: var(--brand-cyan); font-weight: 600;">${s.direction}</span></div>
+                            <div style="display: flex; justify-content: space-between;"><span>Trade Window Open:</span> <span style="color: var(--text-primary);">${s.trade_start}</span></div>
+                            <div style="display: flex; justify-content: space-between;"><span>Trade Window Close:</span> <span style="color: var(--text-primary);">${s.trade_end}</span></div>
+                            <div style="display: flex; justify-content: space-between;"><span>Force Close Squareoff:</span> <span style="color: var(--accent-amber);">${s.force_close}</span></div>
+                            <div style="display: flex; justify-content: space-between;"><span>Contract Quantity:</span> <span style="color: var(--text-primary);">${s.contract_qty} BTC</span></div>
+                            <div style="display: flex; justify-content: space-between;"><span>Max Premium Limit:</span> <span style="color: var(--accent-emerald); font-weight: 600;">$${s.max_premium}</span></div>
                         </div>
                     </div>
                 `).join("");
@@ -361,7 +361,7 @@ async function loadAuditLogs() {
             const logs = await res.json();
             const tbody = document.getElementById("audit-logs-table-body");
             if (logs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--dim);">No audit logs recorded yet.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No audit logs recorded yet.</td></tr>`;
                 return;
             }
 
@@ -371,8 +371,8 @@ async function loadAuditLogs() {
                     <td>${l.user_email}</td>
                     <td><span class="badge badge-info">${l.config_type}</span></td>
                     <td><b>${l.field_name}</b></td>
-                    <td><span style="color: var(--red);">${l.old_value || '-'}</span></td>
-                    <td><span style="color: var(--green);">${l.new_value}</span></td>
+                    <td><span style="color: var(--accent-rose);">${l.old_value || '-'}</span></td>
+                    <td><span style="color: var(--accent-emerald);">${l.new_value}</span></td>
                     <td><span class="badge ${l.apply_mode === 'IMMEDIATE' ? 'badge-success' : 'badge-warning'}">${l.apply_mode}</span></td>
                     <td><span class="badge badge-success">${l.status}</span></td>
                 </tr>
