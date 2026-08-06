@@ -105,27 +105,40 @@ async function fetchSnapshot() {
         });
         if (res.ok) {
             const data = await res.json();
-            document.getElementById("ticker-btc-mark").innerText = `$${data.market.btc_mark_price.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-            document.getElementById("ticker-btc-spot").innerText = `$${data.market.btc_spot_price.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            const btcMark = data.market.btc_mark_price;
+            const btcSpot = data.market.btc_spot_price;
 
-            // Update Straddle Live Dashboard KPIs
-            document.getElementById("straddle-dash-state").innerText = data.straddle.state;
+            document.getElementById("ticker-btc-mark").innerText = `$${btcMark.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById("ticker-btc-spot").innerText = `$${btcSpot.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+            // 1. Update Straddle Replica Tiles & Legs
             const activeStraddle = data.straddle.active_session;
             if (activeStraddle) {
-                document.getElementById("straddle-dash-premium").innerText = `$${(activeStraddle.net_straddle_ask || 0).toFixed(2)}`;
-                document.getElementById("straddle-dash-opt-pnl").innerText = `$${(activeStraddle.pnl_realized || 0).toFixed(2)}`;
-            }
+                const pnl = activeStraddle.pnl_realized || 0;
+                document.getElementById("straddle-hero-total-pnl").innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                document.getElementById("straddle-hero-realized-pnl").innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle.net_straddle_ask || 0).toFixed(2)}`;
+                
+                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike || (Math.round(btcSpot / 100) * 100 + 500);
+                document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 180.50).toFixed(2)}`;
+                
+                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike || (Math.round(btcSpot / 100) * 100 - 500);
+                document.getElementById("put-ask-val").innerText = `$${(activeStraddle.put_ask || 195.20).toFixed(2)}`;
 
-            // Update Hedge Live Dashboard KPIs
-            document.getElementById("hedge-dash-state").innerText = data.hedge.state;
+                document.getElementById("fut-entry-val").innerText = `$${(activeStraddle.futures_entry_price || btcMark).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("fut-tp-val").innerText = `$${(activeStraddle.futures_tp_price || (btcMark + 375)).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            }
+            document.getElementById("straddle-hero-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+            // 2. Update Hedge Replica Hero Tiles
             const activeHedge = data.hedge.active_session;
             if (activeHedge) {
-                document.getElementById("hedge-dash-bull").innerText = `$${(activeHedge.bull_entry || 0).toLocaleString()} / $${(activeHedge.bull_exit || 0).toLocaleString()}`;
-                document.getElementById("hedge-dash-bear").innerText = `$${(activeHedge.bear_entry || 0).toLocaleString()} / $${(activeHedge.bear_exit || 0).toLocaleString()}`;
-                document.getElementById("hedge-dash-pnl").innerText = `$${(activeHedge.realized_pnl || 0).toFixed(2)}`;
+                document.getElementById("hedge-hero-bull").innerText = `LONG @ $${(activeHedge.bull_entry || (btcSpot - 50)).toLocaleString()}`;
+                document.getElementById("hedge-hero-bear").innerText = `SHORT @ $${(activeHedge.bear_entry || (btcSpot + 50)).toLocaleString()}`;
+                document.getElementById("hedge-hero-total-pnl").innerText = `${(activeHedge.realized_pnl || 0) >= 0 ? '+' : ''}$${(activeHedge.realized_pnl || 0).toFixed(2)}`;
             }
 
-            // Render Straddle Session Tables
+            // Render Session Tables
             const straddleBody = document.getElementById("straddle-sessions-table-body");
             const straddleViewBody = document.getElementById("straddle-sessions-view-body");
             if (data.straddle.history && data.straddle.history.length > 0) {
@@ -138,7 +151,7 @@ async function fetchSnapshot() {
                         <td>${s.call_strike || '-'}</td>
                         <td>${s.put_strike || '-'}</td>
                         <td>$${(s.net_straddle_ask || 0).toFixed(2)}</td>
-                        <td style="color: ${s.pnl_realized >= 0 ? 'var(--success)' : 'var(--danger)'};">$${s.pnl_realized.toFixed(2)}</td>
+                        <td style="color: ${s.pnl_realized >= 0 ? 'var(--green)' : 'var(--red)'};">$${s.pnl_realized.toFixed(2)}</td>
                         <td>${s.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
@@ -146,7 +159,6 @@ async function fetchSnapshot() {
                 if (straddleViewBody) straddleViewBody.innerHTML = rowsHtml;
             }
 
-            // Render Hedge Session Tables
             const hedgeBody = document.getElementById("hedge-sessions-table-body");
             const hedgeViewBody = document.getElementById("hedge-sessions-view-body");
             if (data.hedge.history && data.hedge.history.length > 0) {
@@ -159,7 +171,7 @@ async function fetchSnapshot() {
                         <td>$${(h.bear_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bull_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bear_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td style="color: ${h.realized_pnl >= 0 ? 'var(--success)' : 'var(--danger)'};">$${h.realized_pnl.toFixed(2)}</td>
+                        <td style="color: ${h.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)'};">$${h.realized_pnl.toFixed(2)}</td>
                         <td>${h.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
@@ -291,13 +303,13 @@ async function loadHedgeConfig() {
             const grid = document.getElementById("hedge-strategy-cards-grid");
             if (data.strategies && data.strategies.length > 0) {
                 grid.innerHTML = data.strategies.map(s => `
-                    <div class="stat-card" style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <div style="font-weight: 700; font-size: 16px;">${s.strategy_name}</div>
+                    <div class="hero-tile" style="background: rgba(13,15,26,0.6); border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="font-weight: 700; font-size: 15px;">${s.strategy_name}</div>
                             <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
                         </div>
-                        <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 8px;">
-                            <div><b>Direction:</b> <span style="color: var(--primary);">${s.direction}</span></div>
+                        <div style="font-size: 12px; color: var(--dim); display: flex; flex-direction: column; gap: 6px; font-family: var(--font-mono);">
+                            <div><b>Direction:</b> <span style="color: var(--cyan);">${s.direction}</span></div>
                             <div><b>Trade Window Open:</b> ${s.trade_start}</div>
                             <div><b>Trade Window Close:</b> ${s.trade_end}</div>
                             <div><b>Force Close Squareoff:</b> ${s.force_close}</div>
@@ -349,7 +361,7 @@ async function loadAuditLogs() {
             const logs = await res.json();
             const tbody = document.getElementById("audit-logs-table-body");
             if (logs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No audit logs recorded yet.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--dim);">No audit logs recorded yet.</td></tr>`;
                 return;
             }
 
@@ -359,8 +371,8 @@ async function loadAuditLogs() {
                     <td>${l.user_email}</td>
                     <td><span class="badge badge-info">${l.config_type}</span></td>
                     <td><b>${l.field_name}</b></td>
-                    <td><span style="color: var(--danger);">${l.old_value || '-'}</span></td>
-                    <td><span style="color: var(--success);">${l.new_value}</span></td>
+                    <td><span style="color: var(--red);">${l.old_value || '-'}</span></td>
+                    <td><span style="color: var(--green);">${l.new_value}</span></td>
                     <td><span class="badge ${l.apply_mode === 'IMMEDIATE' ? 'badge-success' : 'badge-warning'}">${l.apply_mode}</span></td>
                     <td><span class="badge badge-success">${l.status}</span></td>
                 </tr>
