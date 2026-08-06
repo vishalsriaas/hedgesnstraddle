@@ -171,6 +171,15 @@ async function emergencySquareoff(algo) {
     }
 }
 
+const STRADDLE_FIELDS = [
+    "RUNTIME_MODE", "BOT_ENABLED", "PAPER_TRADING_ENABLED", "WORKER_ID",
+    "BINANCE_API_KEY", "BINANCE_SECRET_KEY", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID",
+    "WINDOW_START", "WINDOW_END", "FUTURES_ENTRY_CUTOFF", "SQ_START", "SQ_END",
+    "FUTURES_SQUAREOFF", "STRADDLE_EXPIRY_TIME", "TRADE_QTY", "MIN_STRIKE_GAP",
+    "MAX_TOTAL_MARK", "MAX_PREMIUM_GAP", "FUTURES_TP_MULTIPLIER", "FUTURES_LEVERAGE",
+    "PAPER_WALLET_USDT"
+];
+
 async function loadStraddleConfig() {
     try {
         const res = await fetch("/api/v1/config/straddle", {
@@ -197,9 +206,9 @@ async function loadStraddleConfig() {
 async function saveStraddleConfig(e) {
     e.preventDefault();
     const payload = {};
-    ["WINDOW_START", "WINDOW_END", "FUTURES_ENTRY_CUTOFF", "SQ_START", "SQ_END", "TRADE_QTY", "FUTURES_LEVERAGE", "PAPER_WALLET_USDT"].forEach(k => {
-        const val = document.getElementById(`cfg_straddle_${k}`).value;
-        if (val) payload[k] = val;
+    STRADDLE_FIELDS.forEach(k => {
+        const input = document.getElementById(`cfg_straddle_${k}`);
+        if (input) payload[k] = input.value;
     });
 
     try {
@@ -221,6 +230,13 @@ async function saveStraddleConfig(e) {
     }
 }
 
+const HEDGE_FIELDS = [
+    "RUNTIME_MODE", "ENGINE_ENABLED", "PAPER_TRADING_ENABLED", "GLOBAL_PAUSE",
+    "MAX_OPTION_SPEND", "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC",
+    "SYMBOL", "TRADE_START_H", "TRADE_START_M", "TRADE_END_H", "TRADE_END_M",
+    "FORCE_CLOSE_H", "FORCE_CLOSE_M", "LEVERAGE", "TRADE_QTY", "BULL_TARGET_PCT", "BEAR_TARGET_PCT"
+];
+
 async function loadHedgeConfig() {
     try {
         const res = await fetch("/api/v1/config/hedge", {
@@ -241,9 +257,9 @@ async function loadHedgeConfig() {
 async function saveHedgeConfig(e) {
     e.preventDefault();
     const payload = {};
-    ["SYMBOL", "LEVERAGE", "TRADE_QTY", "BULL_TARGET_PCT", "BEAR_TARGET_PCT"].forEach(k => {
-        const val = document.getElementById(`cfg_hedge_${k}`).value;
-        if (val) payload[k] = val;
+    HEDGE_FIELDS.forEach(k => {
+        const input = document.getElementById(`cfg_hedge_${k}`);
+        if (input) payload[k] = input.value;
     });
 
     try {

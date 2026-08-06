@@ -87,7 +87,7 @@
             <div class="stat-card">
                 <div class="stat-title">System Health</div>
                 <div class="stat-value" id="stat-system-health" style="color: var(--success);">HEALTHY</div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">PostgreSQL / MariaDB Pool</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">All 22 DocType Schemas Active</div>
             </div>
         </div>
 
@@ -95,8 +95,8 @@
         <div class="nav-tabs">
             <button class="tab-btn active" onclick="switchTab('straddle-dashboard')">📈 Straddle Bot Dashboard</button>
             <button class="tab-btn" onclick="switchTab('hedge-dashboard')">🛡️ Hedge Trader Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('straddle-config')">⚙️ Straddle Settings</button>
-            <button class="tab-btn" onclick="switchTab('hedge-config')">⚙️ Hedge Settings</button>
+            <button class="tab-btn" onclick="switchTab('straddle-config')">⚙️ Straddle Full Settings</button>
+            <button class="tab-btn" onclick="switchTab('hedge-config')">⚙️ Hedge Full Settings</button>
             <button class="tab-btn" onclick="switchTab('audit-logs')">📜 Audit & System Health</button>
             <button class="tab-btn" onclick="switchTab('trade-reports')">📥 Trade Reports & Export</button>
         </div>
@@ -205,19 +205,56 @@
             </div>
         </div>
 
-        <!-- Tab 3: Straddle Config -->
+        <!-- Tab 3: Straddle Full Settings -->
         <div id="tab-straddle-config" class="tab-content" style="display: none;">
             <div class="glass-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div>
-                        <h3 style="font-size: 18px;">Straddle Bot Parameters</h3>
-                        <p style="font-size: 13px; color: var(--text-muted);">Settings modified during an active window are staged automatically to apply after 19:02 PM window close.</p>
+                        <h3 style="font-size: 18px;">Straddle Bot Complete Parameters (Ported 1:1 from Frappe)</h3>
+                        <p style="font-size: 13px; color: var(--text-muted);">Runtime, Credentials, Timing Windows, Entry Rules, and Tuning Parameters</p>
                     </div>
                     <span id="straddle-deferred-badge" class="badge badge-warning" style="display: none;">PENDING DEFERRED RELOAD</span>
                 </div>
 
                 <form id="straddle-config-form">
-                    <div class="form-grid">
+                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">1. Runtime & Credentials</h4>
+                    <div class="form-grid" style="margin-bottom: 24px;">
+                        <div class="form-group">
+                            <label>Runtime Mode</label>
+                            <select id="cfg_straddle_RUNTIME_MODE"><option value="Paper">Paper</option><option value="Live">Live</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Bot Enabled</label>
+                            <select id="cfg_straddle_BOT_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Paper Trading Enabled</label>
+                            <select id="cfg_straddle_PAPER_TRADING_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Worker ID</label>
+                            <input type="text" id="cfg_straddle_WORKER_ID" value="straddle-worker-1">
+                        </div>
+                        <div class="form-group">
+                            <label>Binance API Key</label>
+                            <input type="password" id="cfg_straddle_BINANCE_API_KEY">
+                        </div>
+                        <div class="form-group">
+                            <label>Binance Secret Key</label>
+                            <input type="password" id="cfg_straddle_BINANCE_SECRET_KEY">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Token</label>
+                            <input type="password" id="cfg_straddle_TELEGRAM_TOKEN">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Chat ID</label>
+                            <input type="text" id="cfg_straddle_TELEGRAM_CHAT_ID">
+                        </div>
+                    </div>
+
+                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">2. Timing Windows</h4>
+                    <div class="form-grid" style="margin-bottom: 24px;">
                         <div class="form-group">
                             <label>Entry Window Open (HH:MM)</label>
                             <input type="text" id="cfg_straddle_WINDOW_START" value="18:50">
@@ -231,16 +268,44 @@
                             <input type="text" id="cfg_straddle_FUTURES_ENTRY_CUTOFF" value="18:56">
                         </div>
                         <div class="form-group">
-                            <label>Squareoff Start (HH:MM)</label>
+                            <label>Options Recovery Start (HH:MM)</label>
                             <input type="text" id="cfg_straddle_SQ_START" value="18:57">
                         </div>
                         <div class="form-group">
-                            <label>Squareoff End (HH:MM)</label>
+                            <label>Universal Hard Squareoff (HH:MM)</label>
                             <input type="text" id="cfg_straddle_SQ_END" value="19:02">
                         </div>
                         <div class="form-group">
-                            <label>Trade Quantity (BTC)</label>
+                            <label>Futures Hard Squareoff (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_FUTURES_SQUAREOFF" value="19:02">
+                        </div>
+                        <div class="form-group">
+                            <label>Expiry Time (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_STRADDLE_EXPIRY_TIME" value="19:00">
+                        </div>
+                    </div>
+
+                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">3. Entry Rules & Tuning</h4>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>BTC Quantity Per Leg</label>
                             <input type="text" id="cfg_straddle_TRADE_QTY" value="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Minimum Strike Gap ($)</label>
+                            <input type="text" id="cfg_straddle_MIN_STRIKE_GAP" value="50.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Total Mark Premium ($)</label>
+                            <input type="text" id="cfg_straddle_MAX_TOTAL_MARK" value="1500.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Premium Gap ($)</label>
+                            <input type="text" id="cfg_straddle_MAX_PREMIUM_GAP" value="500.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Futures TP Multiplier</label>
+                            <input type="text" id="cfg_straddle_FUTURES_TP_MULTIPLIER" value="1.0">
                         </div>
                         <div class="form-group">
                             <label>Futures Leverage</label>
@@ -251,29 +316,91 @@
                             <input type="text" id="cfg_straddle_PAPER_WALLET_USDT" value="100000.0">
                         </div>
                     </div>
+
                     <div style="margin-top: 24px; text-align: right;">
-                        <button type="submit" class="btn-primary">Save Straddle Settings</button>
+                        <button type="submit" class="btn-primary">Save Complete Straddle Settings</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- Tab 4: Hedge Config -->
+        <!-- Tab 4: Hedge Full Settings -->
         <div id="tab-hedge-config" class="tab-content" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 20px;">Hedge Trader Parameters</h3>
+                <h3 style="font-size: 18px; margin-bottom: 20px;">Hedge Trader Complete Parameters & Strategy Window</h3>
                 <form id="hedge-config-form">
+                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">1. Global Engine & Risk Parameters</h4>
+                    <div class="form-grid" style="margin-bottom: 24px;">
+                        <div class="form-group">
+                            <label>Runtime Mode</label>
+                            <select id="cfg_hedge_RUNTIME_MODE"><option value="Paper">Paper</option><option value="Live">Live</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Engine Enabled</label>
+                            <select id="cfg_hedge_ENGINE_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Paper Trading Enabled</label>
+                            <select id="cfg_hedge_PAPER_TRADING_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Global Pause</label>
+                            <select id="cfg_hedge_GLOBAL_PAUSE"><option value="0">0 (Active)</option><option value="1">1 (PAUSED)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Option Spend ($)</label>
+                            <input type="text" id="cfg_hedge_MAX_OPTION_SPEND" value="400.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max BTC Quantity</label>
+                            <input type="text" id="cfg_hedge_Q_MAX_BTC" value="1000.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Worker Poll Seconds</label>
+                            <input type="text" id="cfg_hedge_WORKER_POLL_SECONDS" value="2">
+                        </div>
+                        <div class="form-group">
+                            <label>Fill Timeout Sec</label>
+                            <input type="text" id="cfg_hedge_FILL_TIMEOUT_SEC" value="5">
+                        </div>
+                    </div>
+
+                    <h4 style="font-size: 14px; color: var(--primary); margin-bottom: 12px;">2. Hedge Strategy Window & Targets</h4>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label>Symbol</label>
+                            <label>Trade Symbol</label>
                             <input type="text" id="cfg_hedge_SYMBOL" value="BTCUSDT">
+                        </div>
+                        <div class="form-group">
+                            <label>Trade Start Hour (0-23)</label>
+                            <input type="text" id="cfg_hedge_TRADE_START_H" value="5">
+                        </div>
+                        <div class="form-group">
+                            <label>Trade Start Minute (0-59)</label>
+                            <input type="text" id="cfg_hedge_TRADE_START_M" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Trade End Hour (0-23)</label>
+                            <input type="text" id="cfg_hedge_TRADE_END_H" value="7">
+                        </div>
+                        <div class="form-group">
+                            <label>Trade End Minute (0-59)</label>
+                            <input type="text" id="cfg_hedge_TRADE_END_M" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Force Close Hour (0-23)</label>
+                            <input type="text" id="cfg_hedge_FORCE_CLOSE_H" value="13">
+                        </div>
+                        <div class="form-group">
+                            <label>Force Close Minute (0-59)</label>
+                            <input type="text" id="cfg_hedge_FORCE_CLOSE_M" value="0">
                         </div>
                         <div class="form-group">
                             <label>Leverage</label>
                             <input type="text" id="cfg_hedge_LEVERAGE" value="10">
                         </div>
                         <div class="form-group">
-                            <label>Trade Quantity</label>
+                            <label>Trade Quantity (BTC)</label>
                             <input type="text" id="cfg_hedge_TRADE_QTY" value="0.05">
                         </div>
                         <div class="form-group">
@@ -285,8 +412,9 @@
                             <input type="text" id="cfg_hedge_BEAR_TARGET_PCT" value="0.5">
                         </div>
                     </div>
+
                     <div style="margin-top: 24px; text-align: right;">
-                        <button type="submit" class="btn-primary">Save Hedge Settings</button>
+                        <button type="submit" class="btn-primary">Save Complete Hedge Settings</button>
                     </div>
                 </form>
             </div>

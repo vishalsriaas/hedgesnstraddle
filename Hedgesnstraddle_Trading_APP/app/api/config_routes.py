@@ -2,7 +2,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.schema import User, StraddleConfig, HedgeConfig, PendingConfig, ConfigAuditLog
+from app.models.schema import User, StraddleConfig, HedgeConfig, HedgeStrategyConfig, PendingConfig, ConfigAuditLog
 from app.core.auth import get_current_user, require_admin, get_client_ip
 from app.core.straddle_engine import straddle_engine
 from app.core.hedge_engine import hedge_engine
@@ -95,9 +95,11 @@ def update_straddle_config(
 @router.get("/hedge")
 def get_hedge_config(db: Session = Depends(get_db)):
     configs = db.query(HedgeConfig).all()
+    strategies = db.query(HedgeStrategyConfig).all()
     pending = db.query(PendingConfig).filter(PendingConfig.config_type == "HEDGE").all()
     return {
         "active": {c.key: c.value for c in configs},
+        "strategies": strategies,
         "pending": {p.field_name: p.pending_value for p in pending}
     }
 
