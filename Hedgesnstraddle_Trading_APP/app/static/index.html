@@ -225,7 +225,7 @@
 
             <!-- Straddle Session Table -->
             <div class="glass-panel">
-                <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 14px; text-transform: uppercase; color: var(--text-muted);">Straddle Trading Session History</h4>
+                <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 14px; text-transform: uppercase; color: var(--brand-indigo);">Straddle Trading Sessions</h4>
                 <table>
                     <thead>
                         <tr>
@@ -263,9 +263,9 @@
                     <div class="tile-sub">Target: -0.50%</div>
                 </div>
 
-                <div class="hero-tile" style="border-left: 4px solid var(--accent-violet);">
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-amber);">
                     <span class="tile-lbl">OPTION HEDGE RECOVERY</span>
-                    <div class="tile-val" id="hedge-hero-opt-spend" style="color: var(--accent-violet);">$0.00</div>
+                    <div class="tile-val" id="hedge-hero-opt-spend" style="color: var(--accent-amber);">$0.00</div>
                     <div class="tile-sub">Max Spend Limit: $400</div>
                 </div>
 
@@ -280,7 +280,7 @@
             <div class="glass-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div>
-                        <h3 style="font-size: 18px;">🛡️ Active Hedge Dual-Leg Positions & Order Block Recovery</h3>
+                        <h3 style="font-size: 18px;">🛡️ Hedge Trading Sessions & Position Control</h3>
                         <p style="font-size: 13px; color: var(--text-muted);">Simultaneous Bull & Bear leg entry with trailing take-profit targets</p>
                     </div>
                     <button onclick="emergencySquareoff('hedge')" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 12px; padding: 8px 16px;">🚨 Emergency Square-off Hedge</button>
@@ -312,7 +312,7 @@
             <div class="glass-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <div>
-                        <h3 style="font-size: 18px;">Straddle Bot Settings DocType (Ported 1:1)</h3>
+                        <h3 style="font-size: 18px;">Straddle Bot Settings</h3>
                         <p style="font-size: 13px; color: var(--text-muted);">Runtime Modes, Exchange Credentials, Timing Windows, Entry Rules, and Tuning Parameters</p>
                     </div>
                     <span id="straddle-deferred-badge" class="badge badge-warning" style="display: none;">PENDING DEFERRED RELOAD</span>
@@ -429,7 +429,7 @@
         <!-- VIEW 4: STRADDLE SESSIONS -->
         <div id="view-straddle-sessions" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Trading Session DocType Records</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Trading Sessions</h3>
                 <table>
                     <thead>
                         <tr>
@@ -453,7 +453,7 @@
         <!-- VIEW 5: STRADDLE ORDERS & FILLS -->
         <div id="view-straddle-orders" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Trade Order & Fill DocTypes</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Trade Orders & Fills</h3>
                 <table>
                     <thead>
                         <tr>
@@ -477,7 +477,7 @@
         <!-- VIEW 6: STRADDLE WALLET LEDGER -->
         <div id="view-straddle-ledger" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Wallet Ledger Entry DocType</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Wallet Ledger Entries</h3>
                 <table>
                     <thead>
                         <tr>
@@ -499,7 +499,7 @@
         <!-- VIEW 7: HEDGE STRATEGY CONFIG -->
         <div id="view-hedge-strategies" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Strategy Config DocType Rules</h3>
+                <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Strategy Config Rules</h3>
                 <div id="hedge-strategy-cards-grid" class="hero-grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));">
                     <!-- Loaded dynamically via JS -->
                 </div>
@@ -509,7 +509,7 @@
         <!-- VIEW 8: HEDGE ENGINE SETTINGS -->
         <div id="view-hedge-config" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 24px;">Hedge Trader Settings DocType (Global Engine Parameters)</h3>
+                <h3 style="font-size: 18px; margin-bottom: 24px;">Hedge Trader Settings</h3>
                 <form id="hedge-config-form">
                     <div class="form-grid" style="margin-bottom: 24px;">
                         <div class="form-group">
@@ -556,7 +556,7 @@
         <!-- VIEW 9: HEDGE SESSIONS -->
         <div id="view-hedge-sessions" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Trading Session DocType Records</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Trading Sessions</h3>
                 <table>
                     <thead>
                         <tr>
@@ -580,7 +580,7 @@
         <!-- VIEW 10: HEDGE OPEN POSITIONS -->
         <div id="view-hedge-positions" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Open Position & Trade Order DocTypes</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Open Positions & Orders</h3>
                 <table>
                     <thead>
                         <tr>
@@ -603,7 +603,7 @@
         <!-- VIEW 11: HEDGE MACRO EVENTS -->
         <div id="view-hedge-events" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Macro Event DocType Records</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Macro Events</h3>
                 <table>
                     <thead>
                         <tr>
@@ -623,7 +623,7 @@
         <!-- VIEW 12: AUDIT LOGS -->
         <div id="view-audit-logs" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Configuration Change Audit History</h3>
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Config Audit Logs & System Health</h3>
                 <table>
                     <thead>
                         <tr>
@@ -648,7 +648,7 @@
         <div id="view-trade-reports" class="content-view" style="display: none;">
             <div class="glass-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 style="font-size: 18px;">Completed Trade Sessions & Audit Records</h3>
+                    <h3 style="font-size: 18px;">CSV Trade Reports Export</h3>
                     <a href="/api/v1/reports/trades.csv" download class="btn-primary" style="text-decoration: none; font-size: 13px;">📥 Export Trades CSV</a>
                 </div>
                 <p style="color: var(--text-muted); font-size: 13px;">Download complete trade history including options fills, futures fills, wallet debit/credit ledger, and realized PnL.</p>

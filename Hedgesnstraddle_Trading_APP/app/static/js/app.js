@@ -83,14 +83,14 @@ function switchNav(viewId, el) {
         'straddle-config': 'Straddle Bot Settings',
         'straddle-sessions': 'Straddle Trading Sessions',
         'straddle-orders': 'Straddle Trade Orders & Fills',
-        'straddle-ledger': 'Straddle Wallet Ledger',
+        'straddle-ledger': 'Straddle Wallet Ledger Entries',
         'hedge-dashboard': 'Live Hedge Dashboard',
-        'hedge-strategies': 'Hedge Strategy Config',
-        'hedge-config': 'Hedge Engine Settings',
+        'hedge-strategies': 'Hedge Strategy Config Rules',
+        'hedge-config': 'Hedge Trader Settings',
         'hedge-sessions': 'Hedge Trading Sessions',
-        'hedge-positions': 'Hedge Open Positions',
+        'hedge-positions': 'Hedge Open Positions & Orders',
         'hedge-events': 'Hedge Macro Events',
-        'audit-logs': 'Config Audit Logs & Health',
+        'audit-logs': 'Config Audit Logs & System Health',
         'trade-reports': 'CSV Trade Reports Export'
     };
     document.getElementById("current-view-title").innerText = titleMap[viewId] || 'Hedgesnstraddle Control Panel';
