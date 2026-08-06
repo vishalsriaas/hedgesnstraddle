@@ -1,10 +1,17 @@
-env/
-sites/
-logs/
-*.pyc
+# Python & Virtualenv
 __pycache__/
-.venv/
-node_modules/
-.DS_Store
-*.log
+*.py[cod]
+*$py.class
+env/
+venv/
+ENV/
+
+# Database & SQLite
 *.db
+hedgesnstraddle.db
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

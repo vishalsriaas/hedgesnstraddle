@@ -1,8 +1,0 @@
-[pre_model_sync]
-
-[post_model_sync]
-straddle_bot.patches.v2_same_strike_strategy
-straddle_bot.patches.v3_mark_only_accounting
-straddle_bot.patches.v4_recovery_window
-straddle_bot.patches.v5_premium_limit_500
-straddle_bot.patches.v6_production_defaults

@@ -1,5 +1,0 @@
-hedge_api: env/bin/python -m hedge_trader.feeds.worker --site ${FRAPPE_SITE:-hedge.local} --worker-id ${WORKER_ID:-server}-hedge-api --serve-legacy-api --legacy-api-port ${HEDGE_RUNTIME_PORT:-8100}
-hedge_commands: env/bin/python -m hedge_trader.feeds.worker --site ${FRAPPE_SITE:-hedge.local} --worker-id ${WORKER_ID:-server}-hedge-commands
-straddle_bot: env/bin/python -m straddle_bot.feeds.worker --site ${FRAPPE_SITE:-hedge.local} --worker-id ${WORKER_ID:-server}-straddle-bot --mode bot
-straddle_commands: env/bin/python -m straddle_bot.feeds.worker --site ${FRAPPE_SITE:-hedge.local} --worker-id ${WORKER_ID:-server}-straddle-commands --mode command-monitor
-straddle_dashboard: env/bin/python -m straddle_bot.feeds.worker --site ${FRAPPE_SITE:-hedge.local} --worker-id ${WORKER_ID:-server}-straddle-dashboard --mode dashboard --dashboard-port ${STRADDLE_DASHBOARD_PORT:-8080}

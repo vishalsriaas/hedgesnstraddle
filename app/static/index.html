@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hedgesnstraddle - Enterprise Quantitative Trading Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-card">
+            <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 6px;">Welcome Back</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 24px;">Log in to access Hedgesnstraddle Enterprise Panel</p>
+            <form id="login-form" style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" value="admin" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" value="Admin@123" required>
+                </div>
+                <button type="submit" class="btn-primary" style="margin-top: 8px;">Log In</button>
+            </form>
+            <div id="login-error" style="color: var(--accent-rose); font-size: 12px; margin-top: 12px; display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="app-sidebar" style="display: none;">
+        <div class="sidebar-header">
+            <div class="sidebar-brand-icon">H</div>
+            <div>
+                <div class="sidebar-title">Hedgesnstraddle</div>
+                <div style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">QUANT ENGINE V2.0</div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <!-- Straddle Bot Group -->
+            <div>
+                <div class="nav-section-label">📈 STRADDLE BOT WORKSPACE</div>
+                <a class="nav-link active" onclick="switchNav('straddle-dashboard', this)">📊 Live Straddle Dashboard</a>
+                <a class="nav-link" onclick="switchNav('straddle-config', this)">⚙️ Straddle Bot Settings</a>
+                <a class="nav-link" onclick="switchNav('straddle-sessions', this)">🕒 Straddle Trading Sessions</a>
+                <a class="nav-link" onclick="switchNav('straddle-orders', this)">📝 Straddle Trade Orders & Fills</a>
+                <a class="nav-link" onclick="switchNav('straddle-ledger', this)">💳 Straddle Wallet Ledger</a>
+            </div>
+
+            <!-- Hedge Trader Group -->
+            <div>
+                <div class="nav-section-label">🛡️ HEDGE TRADER WORKSPACE</div>
+                <a class="nav-link" onclick="switchNav('hedge-dashboard', this)">📊 Live Hedge Dashboard</a>
+                <a class="nav-link" onclick="switchNav('hedge-strategies', this)">🎯 Hedge Strategy Config</a>
+                <a class="nav-link" onclick="switchNav('hedge-config', this)">⚙️ Hedge Engine Settings</a>
+                <a class="nav-link" onclick="switchNav('hedge-sessions', this)">🕒 Hedge Trading Sessions</a>
+                <a class="nav-link" onclick="switchNav('hedge-positions', this)">📍 Hedge Open Positions</a>
+                <a class="nav-link" onclick="switchNav('hedge-events', this)">📅 Hedge Macro Events</a>
+            </div>
+
+            <!-- System & Administration -->
+            <div>
+                <div class="nav-section-label">⚙️ SYSTEM & ADMINISTRATION</div>
+                <a class="nav-link" onclick="switchNav('audit-logs', this)">📜 Config Audit Logs & Health</a>
+                <a class="nav-link" onclick="switchNav('trade-reports', this)">📥 CSV Trade Reports Export</a>
+            </div>
+        </nav>
+
+        <div style="padding: 16px 20px; border-top: 1px solid var(--border-subtle);">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div id="user-display-name" style="font-weight: 600; font-size: 13px;">Admin User</div>
+                    <div id="user-display-role" class="badge badge-info" style="font-size: 9px; padding: 2px 6px;">ADMIN</div>
+                </div>
+                <button onclick="logout()" style="background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border: 1px solid rgba(244, 63, 94, 0.3); padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600;">Exit</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper" id="app-container" style="display: none;">
+        
+        <!-- Header Ticker Bar -->
+        <header class="glass-panel" style="margin-bottom: 24px; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <h2 id="current-view-title" style="font-size: 20px; font-weight: 700; letter-spacing: -0.3px;">Live Straddle Dashboard</h2>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 18px;">
+                <div style="display: flex; gap: 8px;">
+                    <span class="feed-pill ok">BINANCE OPTIONS: OK</span>
+                    <span class="feed-pill ok">BINANCE FUTURES: OK</span>
+                </div>
+
+                <div style="display: flex; gap: 18px; background: rgba(0, 0, 0, 0.4); padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                    <div style="text-align: right;">
+                        <div style="font-size: 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">BTC Mark Price</div>
+                        <div id="ticker-btc-mark" style="font-family: var(--font-mono); font-weight: 700; font-size: 16px; color: var(--text-primary);">$64,150.40</div>
+                    </div>
+                    <div style="text-align: right; border-left: 1px solid var(--border-subtle); padding-left: 18px;">
+                        <div style="font-size: 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">BTC Spot Price</div>
+                        <div id="ticker-btc-spot" style="font-family: var(--font-mono); font-weight: 700; font-size: 16px; color: var(--brand-cyan);">$64,148.20</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dynamic Content Views -->
+
+        <!-- VIEW 1: LIVE STRADDLE DASHBOARD -->
+        <div id="view-straddle-dashboard" class="content-view">
+            <!-- 5 Hero Tiles -->
+            <div class="hero-grid">
+                <div class="hero-tile">
+                    <span class="tile-lbl">TOTAL P&L</span>
+                    <div class="tile-val pos" id="straddle-hero-total-pnl">+$0.00</div>
+                    <div class="tile-sub">Options + Futures</div>
+                </div>
+
+                <div class="hero-tile">
+                    <span class="tile-lbl">REALIZED P&L</span>
+                    <div class="tile-val pos" id="straddle-hero-realized-pnl">+$0.00</div>
+                    <div class="tile-sub">Closed Sessions</div>
+                </div>
+
+                <div class="hero-tile">
+                    <span class="tile-lbl">STRADDLE PREMIUM</span>
+                    <div class="tile-val" id="straddle-hero-premium">$0.00</div>
+                    <div class="tile-sub">Call Ask + Put Ask</div>
+                </div>
+
+                <div class="hero-tile">
+                    <span class="tile-lbl">PAPER WALLET</span>
+                    <div class="tile-val" id="straddle-hero-wallet" style="color: var(--brand-cyan);">$100,000.00</div>
+                    <div class="tile-sub">USDT Balance</div>
+                </div>
+
+                <div class="hero-tile">
+                    <span class="tile-lbl">MAX DRAWDOWN</span>
+                    <div class="tile-val" id="straddle-hero-drawdown" style="color: var(--text-muted);">0.00%</div>
+                    <div class="tile-sub">Peak to Trough</div>
+                </div>
+            </div>
+
+            <!-- Status Ribbon -->
+            <div class="status-ribbon">
+                <div class="state-dot-wrap">
+                    <div class="state-dot active" id="straddle-state-dot"></div>
+                    <span id="state-label" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-emerald);">STATE: SCANNING</span>
+                </div>
+
+                <span style="color: var(--border-subtle);">|</span>
+
+                <div>
+                    <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">ENTRY WINDOW</span>
+                    <div style="font-family: var(--font-mono); font-size: 13px; font-weight: 600;">18:50:00 – 18:55:00</div>
+                </div>
+
+                <span style="color: var(--border-subtle);">|</span>
+
+                <div>
+                    <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">HARD SQUAREOFF</span>
+                    <div style="font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--accent-amber);">19:02:00</div>
+                </div>
+
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 14px;">
+                    <div style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-amber); background: rgba(245,158,11,0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.3);">
+                        EXPIRY TIME: 19:00:00
+                    </div>
+                    <button onclick="emergencySquareoff('straddle')" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 12px; padding: 8px 16px;">🚨 Emergency Square-off Straddle</button>
+                </div>
+            </div>
+
+            <!-- Entry Rules Audit Grid -->
+            <div class="glass-panel" style="margin-bottom: 24px;">
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;">ENTRY RULE CONDITIONS AUDIT</div>
+                <div class="cond-grid">
+                    <div class="cond-item pass"><span>Minimum Strike Gap</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">$50.00 [PASS]</span></div>
+                    <div class="cond-item pass"><span>Max Combined Mark Premium</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">$1,500.00 [PASS]</span></div>
+                    <div class="cond-item pass"><span>Max Premium Gap</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">$500.00 [PASS]</span></div>
+                    <div class="cond-item pass"><span>Futures Entry Cutoff</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">18:56:00 [PASS]</span></div>
+                </div>
+            </div>
+
+            <!-- Active Position Cards -->
+            <div class="hero-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 24px;">
+                <div class="hero-tile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Call Option Leg</span>
+                        <span class="badge badge-info">BUY CALL</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Strike:</span> <span id="call-strike-val">64,500</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Ask Price:</span> <span id="call-ask-val">$180.50</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Leg PnL:</span> <span style="color: var(--accent-emerald); font-weight: 700;">+$0.00</span></div>
+                    </div>
+                </div>
+
+                <div class="hero-tile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Put Option Leg</span>
+                        <span class="badge badge-info">BUY PUT</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Strike:</span> <span id="put-strike-val">63,800</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Ask Price:</span> <span id="put-ask-val">$195.20</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Leg PnL:</span> <span style="color: var(--accent-emerald); font-weight: 700;">+$0.00</span></div>
+                    </div>
+                </div>
+
+                <div class="hero-tile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Futures Delta Lock</span>
+                        <span class="badge badge-warning">HEDGE FUTURES</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Futures Entry:</span> <span id="fut-entry-val">$64,150.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Take Profit:</span> <span id="fut-tp-val">$64,525.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Futures PnL:</span> <span style="color: var(--accent-emerald); font-weight: 700;">+$0.00</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Straddle Session Table -->
+            <div class="glass-panel">
+                <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 14px; text-transform: uppercase; color: var(--brand-indigo);">Straddle Trading Sessions</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Expiry</th>
+                            <th>Status</th>
+                            <th>BTC Entry Spot</th>
+                            <th>Call Strike</th>
+                            <th>Put Strike</th>
+                            <th>Net Straddle Premium</th>
+                            <th>Realized PnL</th>
+                            <th>Exit Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="straddle-sessions-table-body">
+                        <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No active straddle sessions recorded.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 2: LIVE HEDGE DASHBOARD -->
+        <div id="view-hedge-dashboard" class="content-view" style="display: none;">
+            <!-- Hedge Hero KPI Cards -->
+            <div class="hero-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-emerald);">
+                    <span class="tile-lbl">BULL FUTURES LEG</span>
+                    <div class="tile-val pos" id="hedge-hero-bull" style="font-size: 20px;">LONG @ $64,100</div>
+                    <div class="tile-sub">Target: +0.50%</div>
+                </div>
+
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-rose);">
+                    <span class="tile-lbl">BEAR FUTURES LEG</span>
+                    <div class="tile-val neg" id="hedge-hero-bear" style="font-size: 20px;">SHORT @ $64,200</div>
+                    <div class="tile-sub">Target: -0.50%</div>
+                </div>
+
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-amber);">
+                    <span class="tile-lbl">OPTION HEDGE RECOVERY</span>
+                    <div class="tile-val" id="hedge-hero-opt-spend" style="color: var(--accent-amber);">$0.00</div>
+                    <div class="tile-sub">Max Spend Limit: $400</div>
+                </div>
+
+                <div class="hero-tile" style="border-left: 4px solid var(--brand-cyan);">
+                    <span class="tile-lbl">TOTAL SESSION P&L</span>
+                    <div class="tile-val pos" id="hedge-hero-total-pnl">+$0.00</div>
+                    <div class="tile-sub">Futures + Option Hedge</div>
+                </div>
+            </div>
+
+            <!-- Active Dual-Leg Controls -->
+            <div class="glass-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <h3 style="font-size: 18px;">🛡️ Hedge Trading Sessions & Position Control</h3>
+                        <p style="font-size: 13px; color: var(--text-muted);">Simultaneous Bull & Bear leg entry with trailing take-profit targets</p>
+                    </div>
+                    <button onclick="emergencySquareoff('hedge')" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 12px; padding: 8px 16px;">🚨 Emergency Square-off Hedge</button>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Trader Session</th>
+                            <th>Symbol</th>
+                            <th>Status</th>
+                            <th>Bull Entry</th>
+                            <th>Bear Entry</th>
+                            <th>Bull Exit</th>
+                            <th>Bear Exit</th>
+                            <th>Realized PnL</th>
+                            <th>Exit Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hedge-sessions-table-body">
+                        <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No active hedge trader sessions recorded yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 3: STRADDLE BOT SETTINGS -->
+        <div id="view-straddle-config" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <div>
+                        <h3 style="font-size: 18px;">Straddle Bot Settings</h3>
+                        <p style="font-size: 13px; color: var(--text-muted);">Runtime Modes, Exchange Credentials, Timing Windows, Entry Rules, and Tuning Parameters</p>
+                    </div>
+                    <span id="straddle-deferred-badge" class="badge badge-warning" style="display: none;">PENDING DEFERRED RELOAD</span>
+                </div>
+
+                <form id="straddle-config-form">
+                    <div class="form-section-title">1. Runtime Mode & Credentials</div>
+                    <div class="form-grid" style="margin-bottom: 28px;">
+                        <div class="form-group">
+                            <label>Runtime Mode</label>
+                            <select id="cfg_straddle_RUNTIME_MODE"><option value="Paper">Paper</option><option value="Live">Live</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Bot Enabled</label>
+                            <select id="cfg_straddle_BOT_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Paper Trading Enabled</label>
+                            <select id="cfg_straddle_PAPER_TRADING_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Worker ID</label>
+                            <input type="text" id="cfg_straddle_WORKER_ID" value="straddle-worker-1">
+                        </div>
+                        <div class="form-group">
+                            <label>Binance API Key</label>
+                            <input type="password" id="cfg_straddle_BINANCE_API_KEY">
+                        </div>
+                        <div class="form-group">
+                            <label>Binance Secret Key</label>
+                            <input type="password" id="cfg_straddle_BINANCE_SECRET_KEY">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Token</label>
+                            <input type="password" id="cfg_straddle_TELEGRAM_TOKEN">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Chat ID</label>
+                            <input type="text" id="cfg_straddle_TELEGRAM_CHAT_ID">
+                        </div>
+                    </div>
+
+                    <div class="form-section-title">2. Timing Windows & Cutoffs</div>
+                    <div class="form-grid" style="margin-bottom: 28px;">
+                        <div class="form-group">
+                            <label>Entry Window Open (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_WINDOW_START" value="18:50">
+                        </div>
+                        <div class="form-group">
+                            <label>Entry Window Close (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_WINDOW_END" value="18:55">
+                        </div>
+                        <div class="form-group">
+                            <label>Futures Entry Cutoff (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_FUTURES_ENTRY_CUTOFF" value="18:56">
+                        </div>
+                        <div class="form-group">
+                            <label>Options Recovery Start (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_SQ_START" value="18:57">
+                        </div>
+                        <div class="form-group">
+                            <label>Universal Hard Squareoff (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_SQ_END" value="19:02">
+                        </div>
+                        <div class="form-group">
+                            <label>Futures Hard Squareoff (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_FUTURES_SQUAREOFF" value="19:02">
+                        </div>
+                        <div class="form-group">
+                            <label>Expiry Time (HH:MM)</label>
+                            <input type="text" id="cfg_straddle_STRADDLE_EXPIRY_TIME" value="19:00">
+                        </div>
+                    </div>
+
+                    <div class="form-section-title">3. Entry Rules & Tuning Parameters</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>BTC Quantity Per Leg</label>
+                            <input type="text" id="cfg_straddle_TRADE_QTY" value="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Minimum Strike Gap ($)</label>
+                            <input type="text" id="cfg_straddle_MIN_STRIKE_GAP" value="50.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Total Mark Premium ($)</label>
+                            <input type="text" id="cfg_straddle_MAX_TOTAL_MARK" value="1500.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Premium Gap ($)</label>
+                            <input type="text" id="cfg_straddle_MAX_PREMIUM_GAP" value="500.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Futures Take Profit Multiplier</label>
+                            <input type="text" id="cfg_straddle_FUTURES_TP_MULTIPLIER" value="1.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Futures Leverage</label>
+                            <input type="text" id="cfg_straddle_FUTURES_LEVERAGE" value="10">
+                        </div>
+                        <div class="form-group">
+                            <label>Paper Wallet Balance ($)</label>
+                            <input type="text" id="cfg_straddle_PAPER_WALLET_USDT" value="100000.0">
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 28px; text-align: right;">
+                        <button type="submit" class="btn-primary">Save Complete Straddle Settings</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VIEW 4: STRADDLE SESSIONS -->
+        <div id="view-straddle-sessions" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Trading Sessions</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Expiry</th>
+                            <th>Status</th>
+                            <th>Entry Spot</th>
+                            <th>Call Strike</th>
+                            <th>Put Strike</th>
+                            <th>Straddle Premium</th>
+                            <th>Realized PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="straddle-sessions-view-body">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No records found.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 5: STRADDLE ORDERS & FILLS -->
+        <div id="view-straddle-orders" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Trade Orders & Fills</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Session</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Leg Label</th>
+                            <th>Qty</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="straddle-orders-view-body">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No trade orders submitted yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 6: STRADDLE WALLET LEDGER -->
+        <div id="view-straddle-ledger" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Straddle Wallet Ledger Entries</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Entry Type</th>
+                            <th>Amount ($)</th>
+                            <th>Balance After ($)</th>
+                            <th>Detail</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="straddle-ledger-view-body">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Initial paper deposit $100,000.00 USDT active.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 7: HEDGE STRATEGY CONFIG -->
+        <div id="view-hedge-strategies" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Strategy Config Rules</h3>
+                <div id="hedge-strategy-cards-grid" class="hero-grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));">
+                    <!-- Loaded dynamically via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 8: HEDGE ENGINE SETTINGS -->
+        <div id="view-hedge-config" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 24px;">Hedge Trader Settings</h3>
+                <form id="hedge-config-form">
+                    <div class="form-grid" style="margin-bottom: 24px;">
+                        <div class="form-group">
+                            <label>Runtime Mode</label>
+                            <select id="cfg_hedge_RUNTIME_MODE"><option value="Paper">Paper</option><option value="Live">Live</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Engine Enabled</label>
+                            <select id="cfg_hedge_ENGINE_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Paper Trading Enabled</label>
+                            <select id="cfg_hedge_PAPER_TRADING_ENABLED"><option value="1">1 (Enabled)</option><option value="0">0 (Disabled)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Global Pause</label>
+                            <select id="cfg_hedge_GLOBAL_PAUSE"><option value="0">0 (Active)</option><option value="1">1 (PAUSED)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Option Spend ($)</label>
+                            <input type="text" id="cfg_hedge_MAX_OPTION_SPEND" value="400.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Max BTC Quantity</label>
+                            <input type="text" id="cfg_hedge_Q_MAX_BTC" value="1000.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Worker Poll Seconds</label>
+                            <input type="text" id="cfg_hedge_WORKER_POLL_SECONDS" value="2">
+                        </div>
+                        <div class="form-group">
+                            <label>Fill Timeout Sec</label>
+                            <input type="text" id="cfg_hedge_FILL_TIMEOUT_SEC" value="5">
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 28px; text-align: right;">
+                        <button type="submit" class="btn-primary">Save Complete Hedge Settings</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VIEW 9: HEDGE SESSIONS -->
+        <div id="view-hedge-sessions" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Trading Sessions</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Trader Session</th>
+                            <th>Symbol</th>
+                            <th>Status</th>
+                            <th>Bull Entry</th>
+                            <th>Bear Entry</th>
+                            <th>Bull Exit</th>
+                            <th>Bear Exit</th>
+                            <th>Realized PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hedge-sessions-view-body">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No records found.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 10: HEDGE OPEN POSITIONS -->
+        <div id="view-hedge-positions" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Open Positions & Orders</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Position ID</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Entry Price</th>
+                            <th>Qty</th>
+                            <th>Leverage</th>
+                            <th>Unrealized PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hedge-positions-view-body">
+                        <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 11: HEDGE MACRO EVENTS -->
+        <div id="view-hedge-events" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Macro Events</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Event Name</th>
+                            <th>Event Time</th>
+                            <th>Impact Level</th>
+                            <th>Action Taken</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hedge-events-view-body">
+                        <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No high-impact macro economic blackouts scheduled today.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 12: AUDIT LOGS -->
+        <div id="view-audit-logs" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Config Audit Logs & System Health</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>User Email</th>
+                            <th>Config Type</th>
+                            <th>Field</th>
+                            <th>Old Value</th>
+                            <th>New Value</th>
+                            <th>Apply Mode</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-logs-table-body">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Loading audit logs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW 13: TRADE REPORTS -->
+        <div id="view-trade-reports" class="content-view" style="display: none;">
+            <div class="glass-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="font-size: 18px;">CSV Trade Reports Export</h3>
+                    <a href="/api/v1/reports/trades.csv" download class="btn-primary" style="text-decoration: none; font-size: 13px;">📥 Export Trades CSV</a>
+                </div>
+                <p style="color: var(--text-muted); font-size: 13px;">Download complete trade history including options fills, futures fills, wallet debit/credit ledger, and realized PnL.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
