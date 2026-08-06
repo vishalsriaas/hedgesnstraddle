@@ -80,6 +80,42 @@ async function fetchSnapshot() {
             document.getElementById("stat-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             document.getElementById("stat-straddle-state").innerText = data.straddle.state;
             document.getElementById("stat-hedge-state").innerText = data.hedge.state;
+
+            // Render Straddle Dashboard Sessions Table
+            const straddleBody = document.getElementById("straddle-sessions-table-body");
+            if (data.straddle.history && data.straddle.history.length > 0) {
+                straddleBody.innerHTML = data.straddle.history.map(s => `
+                    <tr>
+                        <td><b>#${s.id}</b></td>
+                        <td>${s.expiry_sym || s.expiry_dt}</td>
+                        <td><span class="badge ${s.status === 'OPEN' ? 'badge-success' : 'badge-warning'}">${s.status}</span></td>
+                        <td>$${(s.btc_entry_spot || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>${s.call_strike || '-'}</td>
+                        <td>${s.put_strike || '-'}</td>
+                        <td>$${(s.net_straddle_ask || 0).toFixed(2)}</td>
+                        <td style="color: ${s.pnl_realized >= 0 ? 'var(--success)' : 'var(--danger)'};">$${s.pnl_realized.toFixed(2)}</td>
+                        <td>${s.exit_reason || '-'}</td>
+                    </tr>
+                `).join("");
+            }
+
+            // Render Hedge Dashboard Sessions Table
+            const hedgeBody = document.getElementById("hedge-sessions-table-body");
+            if (data.hedge.history && data.hedge.history.length > 0) {
+                hedgeBody.innerHTML = data.hedge.history.map(h => `
+                    <tr>
+                        <td><b>#${h.id}</b></td>
+                        <td>${h.symbol}</td>
+                        <td><span class="badge ${h.status === 'Open' ? 'badge-success' : 'badge-warning'}">${h.status}</span></td>
+                        <td>$${(h.bull_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>$${(h.bear_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>$${(h.bull_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>$${(h.bear_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td style="color: ${h.realized_pnl >= 0 ? 'var(--success)' : 'var(--danger)'};">$${h.realized_pnl.toFixed(2)}</td>
+                        <td>${h.exit_reason || '-'}</td>
+                    </tr>
+                `).join("");
+            }
         }
     } catch (err) {
         console.error("Error fetching snapshot:", err);
@@ -113,6 +149,26 @@ function switchTab(tabId) {
     event.target.classList.add("active");
 
     if (tabId === "audit-logs") loadAuditLogs();
+}
+
+async function emergencySquareoff(algo) {
+    if (!confirm(`Are you sure you want to execute EMERGENCY SQUARE-OFF for ${algo.toUpperCase()}? This will close active positions immediately.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/v1/dashboard/${algo}/squareoff`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            alert(data.message);
+            fetchSnapshot();
+        }
+    } catch (err) {
+        alert(`Error executing emergency squareoff for ${algo}`);
+    }
 }
 
 async function loadStraddleConfig() {
