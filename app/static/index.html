@@ -4,14 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hedgesnstraddle - Enterprise Quantitative Trading Platform</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=2.1">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.0">
 </head>
 <body>
     <!-- Sidenav Workspace -->
     <div class="sidenav">
         <div class="sidenav-header">
-            <div class="brand-title">HEDGESNSTRADDLE</div>
-            <div class="brand-subtitle">Enterprise Quantitative Trading</div>
+            <div class="brand-container">
+                <div class="brand-logo-mark">H</div>
+                <div class="brand-title">HEDGESNSTRADDLE</div>
+            </div>
+            <div class="brand-subtitle">QUANT ENGINE v2.0</div>
         </div>
 
         <div class="sidenav-menu">
@@ -64,9 +67,9 @@
         </div>
 
         <div class="sidenav-footer">
-            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Logged in as:</div>
-            <div id="user-email-display" style="font-size: 13px; font-weight: 600; color: var(--brand-cyan); overflow: hidden; text-overflow: ellipsis;">admin</div>
-            <button id="logout-btn" class="btn-primary" style="margin-top: 12px; width: 100%; font-size: 11px; padding: 6px 12px; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-rose); color: var(--accent-rose);">Sign Out</button>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; font-weight: 700;">Logged in as:</div>
+            <div id="user-email-display" style="font-size: 13px; font-weight: 700; color: var(--brand-cyan); overflow: hidden; text-overflow: ellipsis;">admin</div>
+            <button id="logout-btn" class="btn-primary" style="margin-top: 14px; width: 100%; font-size: 11px; padding: 8px 12px; background: rgba(244, 63, 94, 0.15); border: 1px solid var(--accent-rose); color: var(--accent-rose);">Sign Out</button>
         </div>
     </div>
 
@@ -120,9 +123,9 @@
                     <div class="tile-sub">Available Margin</div>
                 </div>
 
-                <div class="hero-tile" style="border-left: 4px solid var(--brand-cyan);">
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-rose);">
                     <span class="tile-lbl">SQUARE-OFF CONTROL</span>
-                    <button onclick="emergencySquareoff('straddle')" class="btn-primary" style="margin-top: 8px; width: 100%; background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 11px; padding: 6px 10px;">🚨 Emergency Squareoff</button>
+                    <button onclick="emergencySquareoff('straddle')" class="btn-primary" style="margin-top: 8px; width: 100%; background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 11px; padding: 8px 10px;">🚨 Emergency Squareoff</button>
                     <div class="tile-sub" style="margin-top: 4px;">Manual Force Close</div>
                 </div>
             </div>
@@ -593,6 +596,6 @@
 
     </div>
 
-    <script src="/static/js/app.js?v=2.2"></script>
+    <script src="/static/js/app.js?v=3.0"></script>
 </body>
 </html>
