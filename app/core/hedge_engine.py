@@ -90,8 +90,18 @@ class HedgeEngine:
                     trade_window_close = f"{role_config.trade_end_h:02d}:{role_config.trade_end_m:02d}"
                     force_close = f"{role_config.force_close_h:02d}:{role_config.force_close_m:02d}"
                     
-                    logger.debug("Hedge Role [%s] limits: Window %s-%s, ForceClose %s, Qty %.2f, MaxPrem $%.1f, MaxTV $%.1f",
-                                 self.active_role, trade_window_open, trade_window_close, force_close, contract_qty, max_premium, max_time_val)
+                    max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
+
+                    logger.debug("Hedge Role [%s] limits: Window %s-%s, ForceClose %s, Qty %.2f, MaxPrem $%.1f, MaxTV $%.1f, MaxSpend $%.1f",
+                                 self.active_role, trade_window_open, trade_window_close, force_close, contract_qty, max_premium, max_time_val, max_option_spend)
+
+    def validate_option_spend(self, option_ask: float, qty: float, max_option_spend: float) -> bool:
+        """Enforces MAX_OPTION_SPEND limit: reject option purchase if (ask * qty) > MAX_OPTION_SPEND."""
+        total_cost = option_ask * qty
+        if total_cost > max_option_spend:
+            logger.warning("Option spend $%.2f exceeds limit $%.2f - REJECTED", total_cost, max_option_spend)
+            return False
+        return True
 
                 if self.state == "COMPLETED":
                     self.flush_pending_config_on_session_close(db)

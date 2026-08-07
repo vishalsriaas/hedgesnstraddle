@@ -60,45 +60,62 @@ class StraddleEngine:
 
     async def find_symmetric_itm_otm_pair(self, spot: float) -> Tuple[float, float, float, float]:
         """
-        Dynamically fetch real-time Binance option tickers and select nearest ITM and OTM
-        Call and Put contracts with equal strike distance relative to current BTC spot price.
+        Dynamically fetch real-time Binance option tickers, filter strictly by the NEAREST EXPIRY DATE,
+        and select nearest ITM and OTM Call and Put contracts with equal strike distance relative to BTC spot.
         """
         tickers = await get_btc_options_tickers()
+        
+        # 500 BTC strike step interval default
+        base_strike = round(spot / 500.0) * 500.0
+        default_call_strike = base_strike + 500.0
+        default_put_strike = base_strike - 500.0
+
         if not tickers:
-            # Calculate symmetric ATM/ITM-OTM equidistant strikes around spot if API tickers initializing
-            base_strike = round(spot / 100.0) * 100.0
-            return base_strike + 300.0, base_strike - 300.0, 180.50, 195.20
+            return default_call_strike, default_put_strike, 180.50, 195.20
 
-        calls: List[dict] = []
-        puts: List[dict] = []
-
+        # Filter strictly for NEAREST EXPIRY DATE
+        parsed_tickers = []
         for t in tickers:
             sym = t.get("symbol", "")
-            # Example symbol: BTC-260807-64000-C
+            # Symbol format: BTC-260808-64500-C
             parts = sym.split("-")
             if len(parts) >= 4:
                 try:
+                    expiry_date = parts[1]
                     strike = float(parts[2])
                     side = parts[3]
                     ask_price = float(t.get("askPrice", 0.0) or t.get("markPrice", 0.0))
-                    if side == "C":
-                        calls.append({"strike": strike, "ask": ask_price, "symbol": sym})
-                    elif side == "P":
-                        puts.append({"strike": strike, "ask": ask_price, "symbol": sym})
+                    parsed_tickers.append({
+                        "symbol": sym,
+                        "expiry": expiry_date,
+                        "strike": strike,
+                        "side": side,
+                        "ask": ask_price
+                    })
                 except ValueError:
                     continue
 
-        if not calls or not puts:
-            base_strike = round(spot / 100.0) * 100.0
-            return base_strike + 300.0, base_strike - 300.0, 180.50, 195.20
+        if not parsed_tickers:
+            return default_call_strike, default_put_strike, 180.50, 195.20
 
-        # Sort strikes
+        # Identify nearest expiry date string
+        available_expiries = sorted(list(set(item["expiry"] for item in parsed_tickers)))
+        nearest_expiry = available_expiries[0]
+
+        nearest_tickers = [item for item in parsed_tickers if item["expiry"] == nearest_expiry]
+        calls = [item for item in nearest_tickers if item["side"] == "C"]
+        puts = [item for item in nearest_tickers if item["side"] == "P"]
+
+        if not calls or not puts:
+            return default_call_strike, default_put_strike, 180.50, 195.20
+
+        # Sort calls by distance from spot
         calls_by_dist = sorted(calls, key=lambda x: abs(x["strike"] - spot))
         best_call = calls_by_dist[0]
         call_dist = abs(best_call["strike"] - spot)
 
         # Match Put with identical strike distance from spot (|K_C - Spot| = |K_P - Spot|)
-        matching_puts = [p for p in puts if abs(abs(p["strike"] - spot) - call_dist) < 50.0]
+        matching_puts = [p for p in puts if abs(abs(p["strike"] - spot) - call_dist) < 100.0]
         best_put = matching_puts[0] if matching_puts else sorted(puts, key=lambda x: abs(x["strike"] - spot))[0]
 
         return best_call["strike"], best_put["strike"], best_call["ask"], best_put["ask"]

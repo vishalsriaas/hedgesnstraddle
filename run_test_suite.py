@@ -184,13 +184,27 @@ def run_suite():
     status, csv_data = make_req(f"{BASE_URL}/api/v1/reports/trades.csv", headers=headers)
     if status == 200:
         passed_count += 1
-        print(f"✅ [TEST 10/10] CSV Trade & Ledger Reports Export: {len(csv_data)} Bytes Exported - VERIFIED")
+        print(f"✅ [TEST 10/11] CSV Trade & Ledger Reports Export: {len(csv_data)} Bytes Exported - VERIFIED")
     else:
-        print(f"❌ [TEST 10/10] CSV Export Failed")
+        print(f"❌ [TEST 10/11] CSV Export Failed")
+        return False
+
+    # -----------------------------------------------------------------
+    # TEST 11: Hedge Engine MAX_OPTION_SPEND Rule Enforcement
+    # -----------------------------------------------------------------
+    from app.core.hedge_engine import hedge_engine
+    is_rejected = not hedge_engine.validate_option_spend(option_ask=500.0, qty=1.0, max_option_spend=400.0)
+    is_accepted = hedge_engine.validate_option_spend(option_ask=350.0, qty=1.0, max_option_spend=400.0)
+    
+    if is_rejected and is_accepted:
+        passed_count += 1
+        print(f"✅ [TEST 11/11] Hedge MAX_OPTION_SPEND Rule Enforcement: Spend $500 > $400 Rejected, $350 Accepted - VERIFIED")
+    else:
+        print(f"❌ [TEST 11/11] MAX_OPTION_SPEND Rule Enforcement Failed")
         return False
 
     print("=" * 75)
-    print(f"SUMMARY: ALL {passed_count}/{total_tests} END-TO-END SYSTEM VERIFICATION TESTS PASSED SUCCESSFULLY (100% CLEAN)")
+    print(f"SUMMARY: ALL {passed_count}/{total_tests+1} END-TO-END SYSTEM VERIFICATION TESTS PASSED SUCCESSFULLY (100% CLEAN)")
     print("=" * 75)
     return True
 
