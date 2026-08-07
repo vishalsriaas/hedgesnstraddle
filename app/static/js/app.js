@@ -99,14 +99,23 @@ async function fetchSnapshot() {
                 document.getElementById("straddle-hero-pnl").innerText = `${(activeStraddle.pnl_realized || 0) >= 0 ? '+' : ''}$${(activeStraddle.pnl_realized || 0).toFixed(2)}`;
                 document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle.net_straddle_ask || 0).toFixed(2)}`;
                 
-                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike || (Math.round(btcSpot / 100) * 100 + 300);
-                document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 180.50).toFixed(2)}`;
+                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike;
+                document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 0).toFixed(2)}`;
                 
-                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike || (Math.round(btcSpot / 100) * 100 - 300);
-                document.getElementById("put-ask-val").innerText = `$${(activeStraddle.put_ask || 195.20).toFixed(2)}`;
+                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike;
+                document.getElementById("put-ask-val").innerText = `$${(activeStraddle.put_ask || 0).toFixed(2)}`;
 
                 document.getElementById("fut-entry-val").innerText = `$${(activeStraddle.futures_entry_price || btcMark).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
                 document.getElementById("fut-tp-val").innerText = `$${(activeStraddle.futures_tp_price || (btcMark + 375)).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            } else {
+                document.getElementById("call-strike-val").innerText = data.straddle.live_call_strike || (Math.round(btcSpot / 100) * 100 + 300);
+                document.getElementById("call-ask-val").innerText = `$${(data.straddle.live_call_ask || 180.50).toFixed(2)}`;
+                
+                document.getElementById("put-strike-val").innerText = data.straddle.live_put_strike || (Math.round(btcSpot / 100) * 100 - 300);
+                document.getElementById("put-ask-val").innerText = `$${(data.straddle.live_put_ask || 195.20).toFixed(2)}`;
+
+                document.getElementById("fut-entry-val").innerText = `$${btcMark.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("fut-tp-val").innerText = `$${(btcMark + 375).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             }
             document.getElementById("straddle-hero-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
