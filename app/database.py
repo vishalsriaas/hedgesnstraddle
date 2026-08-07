@@ -103,6 +103,14 @@ def init_database():
             if not existing:
                 db.add(HedgeConfig(key=k, value=str(v)))
 
+        # Clean legacy hedge strategy config rows if any exist
+        legacy_names = ["Default Directional Hedge", "Bullish Hedge", "Bearish Hedge"]
+        for leg_name in legacy_names:
+            old_row = db.query(HedgeStrategyConfig).filter(HedgeStrategyConfig.strategy_name == leg_name).first()
+            if old_row:
+                db.delete(old_row)
+        db.commit()
+
         # 4. Seed Role-Based Hedge Trader Strategy Config Rules (1st Trader & 2nd Trader)
         strategies = [
             {

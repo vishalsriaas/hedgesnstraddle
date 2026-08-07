@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hedgesnstraddle - Enterprise Quantitative Trading Platform</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.1">
 </head>
 <body>
     <!-- Sidenav Workspace -->
@@ -436,7 +436,7 @@
             <div class="glass-panel">
                 <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Role-Based Parameter Configuration (1st Trader vs 2nd Trader)</h3>
                 <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">Every parameter is dynamic and evaluated strictly per trader entry role (1st Trader vs 2nd Trader).</p>
-                <div id="hedge-strategy-cards-grid">
+                <div id="hedge-strategy-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px;">
                     <!-- Loaded dynamically via JS -->
                 </div>
             </div>
@@ -593,6 +593,6 @@
 
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=2.2"></script>
 </body>
 </html>

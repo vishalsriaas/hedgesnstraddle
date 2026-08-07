@@ -282,55 +282,52 @@ async function loadHedgeConfig() {
             const grid = document.getElementById("hedge-strategy-cards-grid");
             if (data.strategies && data.strategies.length > 0) {
                 grid.innerHTML = data.strategies.map(s => {
-                    const startH = (s.trade_start || "05:00").split(":")[0];
-                    const startM = (s.trade_start || "05:00").split(":")[1];
-                    const endH = (s.trade_end || "07:00").split(":")[0];
-                    const endM = (s.trade_end || "07:00").split(":")[1];
-                    const fcH = (s.force_close || "13:00").split(":")[0];
-                    const fcM = (s.force_close || "13:00").split(":")[1];
+                    const startStr = s.trade_start || "05:00";
+                    const endStr = s.trade_end || "07:00";
+                    const fcStr = s.force_close || "13:00";
 
                     return `
-                    <div class="glass-panel" style="margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
-                            <div style="font-weight: 700; font-size: 16px; color: var(--brand-cyan);">🎯 ${s.strategy_name} Configuration (Role Rule)</div>
+                    <div class="glass-panel" style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-subtle); padding: 24px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle);">
+                            <div style="font-weight: 700; font-size: 17px; color: var(--brand-cyan); display: flex; align-items: center; gap: 8px;">
+                                🎯 <span>${s.strategy_name} Configuration</span>
+                            </div>
                             <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Role Active' : 'Role Disabled'}</span>
                         </div>
-                        <form onsubmit="saveRoleStrategyConfig(event, ${s.id}, '${s.strategy_name}')" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+
+                        <form onsubmit="saveRoleStrategyConfig(event, ${s.id}, '${s.strategy_name}')" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
                             <div class="form-group">
                                 <label>Trade Window Open (HH:MM)</label>
-                                <div style="display: flex; gap: 8px;">
-                                    <input type="number" id="role_${s.id}_start_h" value="${startH}" min="0" max="23" placeholder="HH">
-                                    <input type="number" id="role_${s.id}_start_m" value="${startM}" min="0" max="59" placeholder="MM">
-                                </div>
+                                <input type="text" id="role_${s.id}_start" value="${startStr}" placeholder="05:00" style="font-family: var(--font-mono); font-size: 14px;">
                             </div>
+
                             <div class="form-group">
                                 <label>Trade Window Close (HH:MM)</label>
-                                <div style="display: flex; gap: 8px;">
-                                    <input type="number" id="role_${s.id}_end_h" value="${endH}" min="0" max="23" placeholder="HH">
-                                    <input type="number" id="role_${s.id}_end_m" value="${endM}" min="0" max="59" placeholder="MM">
-                                </div>
+                                <input type="text" id="role_${s.id}_end" value="${endStr}" placeholder="07:00" style="font-family: var(--font-mono); font-size: 14px;">
                             </div>
+
                             <div class="form-group">
                                 <label>Force Close Squareoff (HH:MM)</label>
-                                <div style="display: flex; gap: 8px;">
-                                    <input type="number" id="role_${s.id}_fc_h" value="${fcH}" min="0" max="23" placeholder="HH">
-                                    <input type="number" id="role_${s.id}_fc_m" value="${fcM}" min="0" max="59" placeholder="MM">
-                                </div>
+                                <input type="text" id="role_${s.id}_fc" value="${fcStr}" placeholder="13:00" style="font-family: var(--font-mono); font-size: 14px; color: var(--accent-amber);">
                             </div>
+
                             <div class="form-group">
                                 <label>Contract Quantity (BTC)</label>
-                                <input type="number" step="0.1" id="role_${s.id}_qty" value="${s.contract_qty || 1.0}">
+                                <input type="number" step="0.1" id="role_${s.id}_qty" value="${s.contract_qty || 1.0}" style="font-family: var(--font-mono); font-size: 14px;">
                             </div>
+
                             <div class="form-group">
                                 <label>Max Premium Limit ($)</label>
-                                <input type="number" step="1.0" id="role_${s.id}_max_prem" value="${s.max_premium || 250.0}">
+                                <input type="number" step="1.0" id="role_${s.id}_max_prem" value="${s.max_premium || 250.0}" style="font-family: var(--font-mono); font-size: 14px; color: var(--accent-emerald); font-weight: 600;">
                             </div>
+
                             <div class="form-group">
                                 <label>Max Time Value Limit ($)</label>
-                                <input type="number" step="1.0" id="role_${s.id}_max_tv" value="${s.max_time_value || 229.0}">
+                                <input type="number" step="1.0" id="role_${s.id}_max_tv" value="${s.max_time_value || 229.0}" style="font-family: var(--font-mono); font-size: 14px;">
                             </div>
-                            <div style="grid-column: 1 / -1; text-align: right; margin-top: 8px;">
-                                <button type="submit" class="btn-primary" style="font-size: 13px; padding: 8px 18px;">💾 Save ${s.strategy_name} Role Settings</button>
+
+                            <div style="grid-column: 1 / -1; margin-top: 12px; text-align: right;">
+                                <button type="submit" class="btn-primary" style="font-size: 13px; padding: 10px 22px; width: 100%; border-radius: 6px;">💾 Save ${s.strategy_name} Role Settings</button>
                             </div>
                         </form>
                     </div>
@@ -344,15 +341,19 @@ async function loadHedgeConfig() {
 
 async function saveRoleStrategyConfig(e, stratId, stratName) {
     e.preventDefault();
+    const startParts = (document.getElementById(`role_${stratId}_start`).value || "05:00").split(":");
+    const endParts = (document.getElementById(`role_${stratId}_end`).value || "07:00").split(":");
+    const fcParts = (document.getElementById(`role_${stratId}_fc`).value || "13:00").split(":");
+
     const payload = {
         id: stratId,
         strategy_name: stratName,
-        trade_start_h: parseInt(document.getElementById(`role_${stratId}_start_h`).value),
-        trade_start_m: parseInt(document.getElementById(`role_${stratId}_start_m`).value),
-        trade_end_h: parseInt(document.getElementById(`role_${stratId}_end_h`).value),
-        trade_end_m: parseInt(document.getElementById(`role_${stratId}_end_m`).value),
-        force_close_h: parseInt(document.getElementById(`role_${stratId}_fc_h`).value),
-        force_close_m: parseInt(document.getElementById(`role_${stratId}_fc_m`).value),
+        trade_start_h: parseInt(startParts[0] || "5"),
+        trade_start_m: parseInt(startParts[1] || "0"),
+        trade_end_h: parseInt(endParts[0] || "7"),
+        trade_end_m: parseInt(endParts[1] || "0"),
+        force_close_h: parseInt(fcParts[0] || "13"),
+        force_close_m: parseInt(fcParts[1] || "0"),
         contract_qty: parseFloat(document.getElementById(`role_${stratId}_qty`).value),
         max_premium: parseFloat(document.getElementById(`role_${stratId}_max_prem`).value),
         max_time_value: parseFloat(document.getElementById(`role_${stratId}_max_tv`).value)
