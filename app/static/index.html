@@ -7,185 +7,128 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
+    <!-- Sidenav Workspace -->
+    <div class="sidenav">
+        <div class="sidenav-header">
+            <div class="brand-title">HEDGESNSTRADDLE</div>
+            <div class="brand-subtitle">Enterprise Quantitative Trading</div>
+        </div>
 
-    <!-- Login Modal -->
-    <div id="login-modal" class="modal-overlay">
-        <div class="modal-card">
-            <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 6px;">Welcome Back</h2>
-            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 24px;">Log in to access Hedgesnstraddle Enterprise Panel</p>
-            <form id="login-form" style="display: flex; flex-direction: column; gap: 16px;">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="login-username" value="admin" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="login-password" value="Admin@123" required>
-                </div>
-                <button type="submit" class="btn-primary" style="margin-top: 8px;">Log In</button>
-            </form>
-            <div id="login-error" style="color: var(--accent-rose); font-size: 12px; margin-top: 12px; display: none;"></div>
+        <div class="sidenav-menu">
+            <div class="nav-section-label">⚡ Live Dashboards</div>
+            <div class="nav-item active" data-view="straddle-dashboard">
+                <span>📈 Live Straddle Dashboard</span>
+            </div>
+            <div class="nav-item" data-view="hedge-dashboard">
+                <span>🛡️ Live Hedge Dashboard</span>
+            </div>
+
+            <div class="nav-section-label">📈 Straddle Bot Workspaces</div>
+            <div class="nav-item" data-view="straddle-config">
+                <span>⚙️ Straddle Bot Settings</span>
+            </div>
+            <div class="nav-item" data-view="straddle-sessions">
+                <span>📋 Straddle Trading Session</span>
+            </div>
+            <div class="nav-item" data-view="straddle-orders">
+                <span>📦 Straddle Trade Order & Fill</span>
+            </div>
+            <div class="nav-item" data-view="straddle-ledger">
+                <span>💳 Straddle Wallet Ledger Entry</span>
+            </div>
+
+            <div class="nav-section-label">🛡️ Hedge Trader Workspaces</div>
+            <div class="nav-item" data-view="hedge-strategies">
+                <span>🎯 Hedge Strategy Config</span>
+            </div>
+            <div class="nav-item" data-view="hedge-config">
+                <span>⚙️ Hedge Trader Settings</span>
+            </div>
+            <div class="nav-item" data-view="hedge-sessions">
+                <span>📋 Hedge Trading Session</span>
+            </div>
+            <div class="nav-item" data-view="hedge-positions">
+                <span>📊 Hedge Open Position & Trade Order</span>
+            </div>
+            <div class="nav-item" data-view="hedge-events">
+                <span>📅 Hedge Macro Event</span>
+            </div>
+
+            <div class="nav-section-label">🔍 Governance & Reports</div>
+            <div class="nav-item" data-view="audit-logs">
+                <span>📜 Config Audit Logs</span>
+            </div>
+            <div class="nav-item" data-view="trade-reports">
+                <span>📊 CSV Trade Reports</span>
+            </div>
+        </div>
+
+        <div class="sidenav-footer">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Logged in as:</div>
+            <div id="user-email-display" style="font-size: 13px; font-weight: 600; color: var(--brand-cyan); overflow: hidden; text-overflow: ellipsis;">admin</div>
+            <button id="logout-btn" class="btn-primary" style="margin-top: 12px; width: 100%; font-size: 11px; padding: 6px 12px; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-rose); color: var(--accent-rose);">Sign Out</button>
         </div>
     </div>
 
-    <!-- Sidebar Navigation -->
-    <aside class="sidebar" id="app-sidebar" style="display: none;">
-        <div class="sidebar-header">
-            <div class="sidebar-brand-icon">H</div>
+    <!-- Main Content Panel -->
+    <div class="main-content">
+        <!-- Top Workspace Ribbon Bar -->
+        <div class="workspace-header">
             <div>
-                <div class="sidebar-title">Hedgesnstraddle</div>
-                <div style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);">QUANT ENGINE V2.0</div>
+                <h1 id="workspace-title" class="workspace-title">Live Straddle Bot Dashboard</h1>
+                <p id="workspace-subtitle" class="workspace-subtitle">Real-Time Straddle Execution, Live PnL & Order Feeds</p>
+            </div>
+            <div class="workspace-status-container">
+                <span id="ribbon-straddle-state" class="badge badge-info">Straddle Engine: IDLE</span>
+                <span id="ribbon-hedge-state" class="badge badge-info">Hedge Engine: IDLE</span>
+                <div class="ticker-box">
+                    <span style="color: var(--text-muted);">BTC Spot:</span>
+                    <span id="ticker-btc-spot" style="color: var(--accent-emerald); font-weight: 700;">$64,150.00</span>
+                </div>
+                <div class="ticker-box">
+                    <span style="color: var(--text-muted);">BTC Mark:</span>
+                    <span id="ticker-btc-mark" style="color: var(--brand-cyan); font-weight: 700;">$64,152.40</span>
+                </div>
             </div>
         </div>
-
-        <nav class="sidebar-nav">
-            <!-- Straddle Bot Group -->
-            <div>
-                <div class="nav-section-label">📈 STRADDLE BOT WORKSPACE</div>
-                <a class="nav-link active" onclick="switchNav('straddle-dashboard', this)">📊 Live Straddle Dashboard</a>
-                <a class="nav-link" onclick="switchNav('straddle-config', this)">⚙️ Straddle Bot Settings</a>
-                <a class="nav-link" onclick="switchNav('straddle-sessions', this)">🕒 Straddle Trading Sessions</a>
-                <a class="nav-link" onclick="switchNav('straddle-orders', this)">📝 Straddle Trade Orders & Fills</a>
-                <a class="nav-link" onclick="switchNav('straddle-ledger', this)">💳 Straddle Wallet Ledger</a>
-            </div>
-
-            <!-- Hedge Trader Group -->
-            <div>
-                <div class="nav-section-label">🛡️ HEDGE TRADER WORKSPACE</div>
-                <a class="nav-link" onclick="switchNav('hedge-dashboard', this)">📊 Live Hedge Dashboard</a>
-                <a class="nav-link" onclick="switchNav('hedge-strategies', this)">🎯 Hedge Strategy Config</a>
-                <a class="nav-link" onclick="switchNav('hedge-config', this)">⚙️ Hedge Engine Settings</a>
-                <a class="nav-link" onclick="switchNav('hedge-sessions', this)">🕒 Hedge Trading Sessions</a>
-                <a class="nav-link" onclick="switchNav('hedge-positions', this)">📍 Hedge Open Positions</a>
-                <a class="nav-link" onclick="switchNav('hedge-events', this)">📅 Hedge Macro Events</a>
-            </div>
-
-            <!-- System & Administration -->
-            <div>
-                <div class="nav-section-label">⚙️ SYSTEM & ADMINISTRATION</div>
-                <a class="nav-link" onclick="switchNav('audit-logs', this)">📜 Config Audit Logs & Health</a>
-                <a class="nav-link" onclick="switchNav('trade-reports', this)">📥 CSV Trade Reports Export</a>
-            </div>
-        </nav>
-
-        <div style="padding: 16px 20px; border-top: 1px solid var(--border-subtle);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div>
-                    <div id="user-display-name" style="font-weight: 600; font-size: 13px;">Admin User</div>
-                    <div id="user-display-role" class="badge badge-info" style="font-size: 9px; padding: 2px 6px;">ADMIN</div>
-                </div>
-                <button onclick="logout()" style="background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border: 1px solid rgba(244, 63, 94, 0.3); padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600;">Exit</button>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Main Content Area -->
-    <div class="main-wrapper" id="app-container" style="display: none;">
-        
-        <!-- Header Ticker Bar -->
-        <header class="glass-panel" style="margin-bottom: 24px; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-                <h2 id="current-view-title" style="font-size: 20px; font-weight: 700; letter-spacing: -0.3px;">Live Straddle Dashboard</h2>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 18px;">
-                <div style="display: flex; gap: 8px;">
-                    <span class="feed-pill ok">BINANCE OPTIONS: OK</span>
-                    <span class="feed-pill ok">BINANCE FUTURES: OK</span>
-                </div>
-
-                <div style="display: flex; gap: 18px; background: rgba(0, 0, 0, 0.4); padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-                    <div style="text-align: right;">
-                        <div style="font-size: 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">BTC Mark Price</div>
-                        <div id="ticker-btc-mark" style="font-family: var(--font-mono); font-weight: 700; font-size: 16px; color: var(--text-primary);">$64,150.40</div>
-                    </div>
-                    <div style="text-align: right; border-left: 1px solid var(--border-subtle); padding-left: 18px;">
-                        <div style="font-size: 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">BTC Spot Price</div>
-                        <div id="ticker-btc-spot" style="font-family: var(--font-mono); font-weight: 700; font-size: 16px; color: var(--brand-cyan);">$64,148.20</div>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <!-- Dynamic Content Views -->
 
         <!-- VIEW 1: LIVE STRADDLE DASHBOARD -->
         <div id="view-straddle-dashboard" class="content-view">
-            <!-- 5 Hero Tiles -->
+            <!-- Straddle Replica 5 Hero KPI Cards -->
             <div class="hero-grid">
-                <div class="hero-tile">
-                    <span class="tile-lbl">TOTAL P&L</span>
-                    <div class="tile-val pos" id="straddle-hero-total-pnl">+$0.00</div>
-                    <div class="tile-sub">Options + Futures</div>
+                <div class="hero-tile" style="border-left: 4px solid var(--brand-indigo);">
+                    <span class="tile-lbl">BTC SPOT ENTRY</span>
+                    <div class="tile-val" id="straddle-hero-spot">$64,150.00</div>
+                    <div class="tile-sub">Binance Spot Index</div>
                 </div>
 
-                <div class="hero-tile">
-                    <span class="tile-lbl">REALIZED P&L</span>
-                    <div class="tile-val pos" id="straddle-hero-realized-pnl">+$0.00</div>
-                    <div class="tile-sub">Closed Sessions</div>
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-emerald);">
+                    <span class="tile-lbl">REALIZED SESSION P&L</span>
+                    <div class="tile-val pos" id="straddle-hero-pnl">+$0.00</div>
+                    <div class="tile-sub">Current Trade PnL</div>
                 </div>
 
-                <div class="hero-tile">
-                    <span class="tile-lbl">STRADDLE PREMIUM</span>
-                    <div class="tile-val" id="straddle-hero-premium">$0.00</div>
-                    <div class="tile-sub">Call Ask + Put Ask</div>
+                <div class="hero-tile" style="border-left: 4px solid var(--accent-amber);">
+                    <span class="tile-lbl">STRADDLE NET PREMIUM</span>
+                    <div class="tile-val" id="straddle-hero-premium" style="color: var(--accent-amber);">$375.70</div>
+                    <div class="tile-sub">Call + Put Ask Total</div>
                 </div>
 
-                <div class="hero-tile">
-                    <span class="tile-lbl">PAPER WALLET</span>
-                    <div class="tile-val" id="straddle-hero-wallet" style="color: var(--brand-cyan);">$100,000.00</div>
-                    <div class="tile-sub">USDT Balance</div>
+                <div class="hero-tile" style="border-left: 4px solid var(--brand-purple);">
+                    <span class="tile-lbl">VIRTUAL PAPER WALLET</span>
+                    <div class="tile-val" id="straddle-hero-wallet" style="color: var(--brand-purple);">$100,000.00</div>
+                    <div class="tile-sub">Available Margin</div>
                 </div>
 
-                <div class="hero-tile">
-                    <span class="tile-lbl">MAX DRAWDOWN</span>
-                    <div class="tile-val" id="straddle-hero-drawdown" style="color: var(--text-muted);">0.00%</div>
-                    <div class="tile-sub">Peak to Trough</div>
-                </div>
-            </div>
-
-            <!-- Status Ribbon -->
-            <div class="status-ribbon">
-                <div class="state-dot-wrap">
-                    <div class="state-dot active" id="straddle-state-dot"></div>
-                    <span id="state-label" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-emerald);">STATE: SCANNING</span>
-                </div>
-
-                <span style="color: var(--border-subtle);">|</span>
-
-                <div>
-                    <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">ENTRY WINDOW</span>
-                    <div style="font-family: var(--font-mono); font-size: 13px; font-weight: 600;">18:50:00 – 18:55:00</div>
-                </div>
-
-                <span style="color: var(--border-subtle);">|</span>
-
-                <div>
-                    <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">HARD SQUAREOFF</span>
-                    <div style="font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--accent-amber);">19:02:00</div>
-                </div>
-
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 14px;">
-                    <div style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-amber); background: rgba(245,158,11,0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.3);">
-                        EXPIRY TIME: 19:00:00
-                    </div>
-                    <button onclick="emergencySquareoff('straddle')" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 12px; padding: 8px 16px;">🚨 Emergency Square-off Straddle</button>
+                <div class="hero-tile" style="border-left: 4px solid var(--brand-cyan);">
+                    <span class="tile-lbl">SQUARE-OFF CONTROL</span>
+                    <button onclick="emergencySquareoff('straddle')" class="btn-primary" style="margin-top: 8px; width: 100%; background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 11px; padding: 6px 10px;">🚨 Emergency Squareoff</button>
+                    <div class="tile-sub" style="margin-top: 4px;">Manual Force Close</div>
                 </div>
             </div>
 
-            <!-- Entry Rules Audit Grid -->
-            <div class="glass-panel" style="margin-bottom: 24px;">
-                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;">ENTRY RULE CONDITIONS AUDIT</div>
-                <div class="cond-grid">
-                    <div class="cond-item pass"><span>Minimum Strike Gap</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">$50.00 [PASS]</span></div>
-                    <div class="cond-item pass"><span>Max Combined Mark Premium</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">$1,500.00 [PASS]</span></div>
-                    <div class="cond-item pass"><span>Max Premium Gap</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">$500.00 [PASS]</span></div>
-                    <div class="cond-item pass"><span>Futures Entry Cutoff</span><span style="font-family: var(--font-mono); font-weight: 600; color: var(--accent-emerald);">18:56:00 [PASS]</span></div>
-                </div>
-            </div>
-
-            <!-- Active Position Cards -->
-            <div class="hero-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 24px;">
+            <!-- Active Straddle Option Contract Legs -->
+            <div class="hero-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
                 <div class="hero-tile">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
                         <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Call Option Leg</span>
@@ -313,7 +256,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <div>
                         <h3 style="font-size: 18px;">Straddle Bot Settings</h3>
-                        <p style="font-size: 13px; color: var(--text-muted);">Runtime Modes, Exchange Credentials, Timing Windows, Entry Rules, and Tuning Parameters</p>
+                        <p style="font-size: 13px; color: var(--text-muted);">Runtime Modes, Exchange Credentials, Dynamic Timing Windows, Entry Rules, and Tuning Parameters</p>
                     </div>
                     <span id="straddle-deferred-badge" class="badge badge-warning" style="display: none;">PENDING DEFERRED RELOAD</span>
                 </div>
@@ -355,7 +298,7 @@
                         </div>
                     </div>
 
-                    <div class="form-section-title">2. Timing Windows & Cutoffs</div>
+                    <div class="form-section-title">2. Dynamic Timing Windows & Cutoffs</div>
                     <div class="form-grid" style="margin-bottom: 28px;">
                         <div class="form-group">
                             <label>Entry Window Open (HH:MM)</label>
@@ -387,23 +330,15 @@
                         </div>
                     </div>
 
-                    <div class="form-section-title">3. Entry Rules & Tuning Parameters</div>
+                    <div class="form-section-title">3. Dynamic Strategy Parameters</div>
                     <div class="form-grid">
                         <div class="form-group">
                             <label>BTC Quantity Per Leg</label>
                             <input type="text" id="cfg_straddle_TRADE_QTY" value="0.1">
                         </div>
                         <div class="form-group">
-                            <label>Minimum Strike Gap ($)</label>
-                            <input type="text" id="cfg_straddle_MIN_STRIKE_GAP" value="50.0">
-                        </div>
-                        <div class="form-group">
                             <label>Max Total Mark Premium ($)</label>
                             <input type="text" id="cfg_straddle_MAX_TOTAL_MARK" value="1500.0">
-                        </div>
-                        <div class="form-group">
-                            <label>Max Premium Gap ($)</label>
-                            <input type="text" id="cfg_straddle_MAX_PREMIUM_GAP" value="500.0">
                         </div>
                         <div class="form-group">
                             <label>Futures Take Profit Multiplier</label>
@@ -420,7 +355,7 @@
                     </div>
 
                     <div style="margin-top: 28px; text-align: right;">
-                        <button type="submit" class="btn-primary">Save Complete Straddle Settings</button>
+                        <button type="submit" class="btn-primary">💾 Save Dynamic Straddle Settings</button>
                     </div>
                 </form>
             </div>
@@ -481,26 +416,27 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
+                            <th>Ledger ID</th>
+                            <th>Session ID</th>
                             <th>Entry Type</th>
-                            <th>Amount ($)</th>
-                            <th>Balance After ($)</th>
-                            <th>Detail</th>
-                            <th>Timestamp</th>
+                            <th>Amount</th>
+                            <th>Balance After</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
                     <tbody id="straddle-ledger-view-body">
-                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Initial paper deposit $100,000.00 USDT active.</td></tr>
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No wallet ledger entries logged.</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- VIEW 7: HEDGE STRATEGY CONFIG -->
+        <!-- VIEW 7: HEDGE STRATEGY CONFIG RULES -->
         <div id="view-hedge-strategies" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Strategy Config Rules</h3>
-                <div id="hedge-strategy-cards-grid" class="hero-grid" style="grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));">
+                <h3 style="font-size: 18px; margin-bottom: 20px;">🎯 Hedge Role-Based Parameter Configuration (1st Trader vs 2nd Trader)</h3>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">Every parameter is dynamic and evaluated strictly per trader entry role (1st Trader vs 2nd Trader).</p>
+                <div id="hedge-strategy-cards-grid">
                     <!-- Loaded dynamically via JS -->
                 </div>
             </div>
@@ -509,7 +445,7 @@
         <!-- VIEW 8: HEDGE ENGINE SETTINGS -->
         <div id="view-hedge-config" class="content-view" style="display: none;">
             <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 24px;">Hedge Trader Settings</h3>
+                <h3 style="font-size: 18px; margin-bottom: 24px;">Hedge Trader Settings (Global Parameters)</h3>
                 <form id="hedge-config-form">
                     <div class="form-grid" style="margin-bottom: 24px;">
                         <div class="form-group">
@@ -547,7 +483,7 @@
                     </div>
 
                     <div style="margin-top: 28px; text-align: right;">
-                        <button type="submit" class="btn-primary">Save Complete Hedge Settings</button>
+                        <button type="submit" class="btn-primary">💾 Save Global Hedge Settings</button>
                     </div>
                 </form>
             </div>

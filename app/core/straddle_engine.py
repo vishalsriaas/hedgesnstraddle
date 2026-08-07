@@ -1,13 +1,14 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import (
     StraddleConfig, PendingConfig, ConfigAuditLog, StraddleSession, 
     StraddleTradeOrder, StraddleFill, StraddleWalletLedger
 )
+from app.core.binance_client import get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_tickers
 
 logger = logging.getLogger("hedgesnstraddle.straddle_engine")
 
@@ -16,6 +17,10 @@ class StraddleEngine:
         self.is_running = False
         self.active_session_id: Optional[int] = None
         self.state = "IDLE"
+        self.current_call_strike: float = 64500.0
+        self.current_put_strike: float = 63800.0
+        self.current_call_ask: float = 180.50
+        self.current_put_ask: float = 195.20
         self._task: Optional[asyncio.Task] = None
 
     def load_config(self, db: Session) -> Dict[str, str]:
@@ -53,6 +58,51 @@ class StraddleEngine:
         db.commit()
         logger.info("Successfully applied pending straddle configurations!")
 
+    async def find_symmetric_itm_otm_pair(self, spot: float) -> Tuple[float, float, float, float]:
+        """
+        Dynamically fetch real-time Binance option tickers and select nearest ITM and OTM
+        Call and Put contracts with equal strike distance relative to current BTC spot price.
+        """
+        tickers = await get_btc_options_tickers()
+        if not tickers:
+            # Calculate symmetric ATM/ITM-OTM equidistant strikes around spot if API tickers initializing
+            base_strike = round(spot / 100.0) * 100.0
+            return base_strike + 300.0, base_strike - 300.0, 180.50, 195.20
+
+        calls: List[dict] = []
+        puts: List[dict] = []
+
+        for t in tickers:
+            sym = t.get("symbol", "")
+            # Example symbol: BTC-260807-64000-C
+            parts = sym.split("-")
+            if len(parts) >= 4:
+                try:
+                    strike = float(parts[2])
+                    side = parts[3]
+                    ask_price = float(t.get("askPrice", 0.0) or t.get("markPrice", 0.0))
+                    if side == "C":
+                        calls.append({"strike": strike, "ask": ask_price, "symbol": sym})
+                    elif side == "P":
+                        puts.append({"strike": strike, "ask": ask_price, "symbol": sym})
+                except ValueError:
+                    continue
+
+        if not calls or not puts:
+            base_strike = round(spot / 100.0) * 100.0
+            return base_strike + 300.0, base_strike - 300.0, 180.50, 195.20
+
+        # Sort strikes
+        calls_by_dist = sorted(calls, key=lambda x: abs(x["strike"] - spot))
+        best_call = calls_by_dist[0]
+        call_dist = abs(best_call["strike"] - spot)
+
+        # Match Put with identical strike distance from spot (|K_C - Spot| = |K_P - Spot|)
+        matching_puts = [p for p in puts if abs(abs(p["strike"] - spot) - call_dist) < 50.0]
+        best_put = matching_puts[0] if matching_puts else sorted(puts, key=lambda x: abs(x["strike"] - spot))[0]
+
+        return best_call["strike"], best_put["strike"], best_call["ask"], best_put["ask"]
+
     async def run_loop(self):
         self.is_running = True
         logger.info("Straddle Engine async loop started.")
@@ -67,6 +117,13 @@ class StraddleEngine:
                     db.close()
                     await asyncio.sleep(2.0)
                     continue
+
+                spot = await get_btc_spot_price()
+                call_st, put_st, call_ask, put_ask = await self.find_symmetric_itm_otm_pair(spot)
+                self.current_call_strike = call_st
+                self.current_put_strike = put_st
+                self.current_call_ask = call_ask
+                self.current_put_ask = put_ask
 
                 now_time_str = datetime.now().strftime("%H:%M")
                 window_start = cfg.get("WINDOW_START", "18:50")

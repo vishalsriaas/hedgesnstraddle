@@ -59,9 +59,7 @@ def init_database():
             "STRADDLE_EXPIRY_TIME": "19:00",
             "TRADE_QTY": "0.1",
             "MIN_EXPIRY_HOURS": "0.0",
-            "MIN_STRIKE_GAP": "50.0",
             "MAX_TOTAL_MARK": "1500.0",
-            "MAX_PREMIUM_GAP": "500.0",
             "FUTURES_TP_MULTIPLIER": "1.0",
             "SCAN_INTERVAL": "1.0",
             "RETRY_TIMEOUT": "5.0",
@@ -105,29 +103,29 @@ def init_database():
             if not existing:
                 db.add(HedgeConfig(key=k, value=str(v)))
 
-        # 4. Seed Bullish Hedge & Bearish Hedge Strategy Config Rules
+        # 4. Seed Role-Based Hedge Trader Strategy Config Rules (1st Trader & 2nd Trader)
         strategies = [
             {
-                "strategy_name": "Bullish Hedge",
-                "strategy_key": "bullish_hedge",
-                "direction": "Bullish",
+                "strategy_name": "1st Trader",
+                "strategy_key": "first_trader",
+                "direction": "1st Trader Role",
                 "trade_start_h": 5, "trade_start_m": 0,
-                "trade_end_h": 7, "trade_end_m": 30,
-                "force_close_h": 12, "force_close_m": 0,
-                "contract_qty": 10.0,
-                "max_premium": 220.0,
-                "max_time_value": 219.0
+                "trade_end_h": 7, "trade_end_m": 0,
+                "force_close_h": 13, "force_close_m": 0,
+                "contract_qty": 1.0,
+                "max_premium": 250.0,
+                "max_time_value": 229.0
             },
             {
-                "strategy_name": "Bearish Hedge",
-                "strategy_key": "bearish_hedge",
-                "direction": "Bearish",
-                "trade_start_h": 5, "trade_start_m": 0,
-                "trade_end_h": 7, "trade_end_m": 30,
-                "force_close_h": 12, "force_close_m": 0,
-                "contract_qty": 10.0,
-                "max_premium": 220.0,
-                "max_time_value": 219.0
+                "strategy_name": "2nd Trader",
+                "strategy_key": "second_trader",
+                "direction": "2nd Trader Role",
+                "trade_start_h": 7, "trade_start_m": 0,
+                "trade_end_h": 11, "trade_end_m": 0,
+                "force_close_h": 17, "force_close_m": 0,
+                "contract_qty": 1.0,
+                "max_premium": 400.0,
+                "max_time_value": 350.0
             }
         ]
         for s in strategies:

@@ -1,19 +1,20 @@
 import httpx
 import logging
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger("hedgesnstraddle.binance_client")
 
 BINANCE_FUTURES_URL = "https://fapi.binance.com"
 BINANCE_SPOT_URL = "https://api.binance.com"
+BINANCE_OPTIONS_URL = "https://eapi.binance.com"
 
-_price_cache: Dict[str, tuple[float, float]] = {}
+_price_cache: Dict[str, tuple[Any, float]] = {}
 
 async def get_btc_futures_mark_price() -> float:
     now = time.time()
-    if "BTCUSDT" in _price_cache and (now - _price_cache["BTCUSDT"][1]) < 2.0:
-        return _price_cache["BTCUSDT"][0]
+    if "BTCUSDT" in _price_cache and (now - _price_cache["BTCUSDT"][1]) < 1.5:
+        return float(_price_cache["BTCUSDT"][0])
 
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
@@ -25,12 +26,12 @@ async def get_btc_futures_mark_price() -> float:
     except Exception as e:
         logger.warning("Error fetching Binance mark price: %s", str(e))
 
-    return _price_cache.get("BTCUSDT", (64000.0, 0.0))[0]
+    return float(_price_cache.get("BTCUSDT", (64000.0, 0.0))[0])
 
 async def get_btc_spot_price() -> float:
     now = time.time()
-    if "BTC_SPOT" in _price_cache and (now - _price_cache["BTC_SPOT"][1]) < 2.0:
-        return _price_cache["BTC_SPOT"][0]
+    if "BTC_SPOT" in _price_cache and (now - _price_cache["BTC_SPOT"][1]) < 1.5:
+        return float(_price_cache["BTC_SPOT"][0])
 
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
@@ -42,4 +43,25 @@ async def get_btc_spot_price() -> float:
     except Exception as e:
         logger.warning("Error fetching Binance spot price: %s", str(e))
 
-    return _price_cache.get("BTC_SPOT", (64000.0, 0.0))[0]
+    return float(_price_cache.get("BTC_SPOT", (64000.0, 0.0))[0])
+
+async def get_btc_options_tickers() -> List[Dict[str, Any]]:
+    """Fetch real-time BTC Option tickers from Binance Options API (eapi.binance.com)."""
+    now = time.time()
+    if "BTC_OPTIONS_TICKERS" in _price_cache and (now - _price_cache["BTC_OPTIONS_TICKERS"][1]) < 2.0:
+        return _price_cache["BTC_OPTIONS_TICKERS"][0]
+
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{BINANCE_OPTIONS_URL}/eapi/v1/ticker")
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list):
+                    # Filter for BTC options
+                    btc_opts = [item for item in data if item.get("symbol", "").startswith("BTC")]
+                    _price_cache["BTC_OPTIONS_TICKERS"] = (btc_opts, now)
+                    return btc_opts
+    except Exception as e:
+        logger.warning("Error fetching Binance options tickers: %s", str(e))
+
+    return _price_cache.get("BTC_OPTIONS_TICKERS", ([], 0.0))[0]

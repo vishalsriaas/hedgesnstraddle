@@ -5,7 +5,7 @@ import urllib.request
 import urllib.parse
 import time
 
-BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8088")
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8085")
 
 def make_req(url, method="GET", data=None, headers=None):
     if headers is None:
@@ -93,21 +93,23 @@ def run_suite():
         return False
     print(f"[TEST 5] Hedge Config Read/Write: {res['message']} - OK")
 
-    # 6. Hedge Strategy Rules Update
+    # 6. Hedge 1st Trader Role Strategy Rules Update
     strategy_payload = {
-        "strategy_name": "Bullish Hedge",
+        "strategy_name": "1st Trader",
         "enabled": True,
-        "direction": "Bullish",
+        "direction": "1st Trader Role",
         "trade_start_h": 5, "trade_start_m": 0,
-        "trade_end_h": 7, "trade_end_m": 30,
-        "contract_qty": 10.0,
-        "max_premium": 250.0
+        "trade_end_h": 7, "trade_end_m": 0,
+        "force_close_h": 13, "force_close_m": 0,
+        "contract_qty": 1.0,
+        "max_premium": 250.0,
+        "max_time_value": 229.0
     }
     status, res = make_req(f"{BASE_URL}/api/v1/config/hedge/strategies", method="POST", data=strategy_payload, headers=headers)
     if status != 200:
         print(f"[TEST 6 FAILED] Hedge Strategy Rules update failed: {res}")
         return False
-    print(f"[TEST 6] Hedge Strategy Rules Update: {res['message']} - OK")
+    print(f"[TEST 6] Hedge Role Strategy Rules Update: {res['message']} - OK")
 
     # 7. Emergency Square-off Straddle
     status, res = make_req(f"{BASE_URL}/api/v1/dashboard/straddle/squareoff", method="POST", headers=headers)

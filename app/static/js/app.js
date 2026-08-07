@@ -1,102 +1,73 @@
-let authToken = localStorage.getItem("token");
+let authToken = localStorage.getItem("token") || "";
+let currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 let ws = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-    if (authToken) {
-        initApp();
-    } else {
-        document.getElementById("login-modal").style.display = "flex";
-        document.getElementById("app-sidebar").style.display = "none";
-        document.getElementById("app-container").style.display = "none";
+    if (!authToken) {
+        window.location.href = "/";
+        return;
     }
 
-    document.getElementById("login-form").addEventListener("submit", handleLogin);
+    document.getElementById("user-email-display").innerText = currentUser.email || "Admin";
+
+    // Nav Switcher
+    const navItems = document.querySelectorAll(".nav-item[data-view]");
+    navItems.forEach(item => {
+        item.addEventListener("click", () => {
+            navItems.forEach(n => n.classList.remove("active"));
+            item.classList.add("active");
+
+            const targetView = item.getAttribute("data-view");
+            document.querySelectorAll(".content-view").forEach(v => v.style.display = "none");
+            
+            const el = document.getElementById(`view-${targetView}`);
+            if (el) el.style.display = "block";
+
+            // Header titles
+            const titleMap = {
+                "straddle-dashboard": ["Live Straddle Bot Dashboard", "Real-Time Straddle Execution, Live PnL & Order Feeds"],
+                "hedge-dashboard": ["Live Hedge Trader Dashboard", "Dual-Leg Directional Hedge Engine, Active Position Feeds"],
+                "straddle-config": ["Straddle Bot Settings", "Runtime Modes, Credentials, Entry Rules, and Tuning"],
+                "straddle-sessions": ["Straddle Trading Session Records", "Historical Straddle Bot Execution Trajectories"],
+                "straddle-orders": ["Straddle Trade Order & Fill Records", "Execution Order Audit Trail & Binance Fill Log"],
+                "straddle-ledger": ["Straddle Wallet Ledger Entries", "Virtual & Live Balance Adjustment Ledger"],
+                "hedge-strategies": ["Hedge Strategy Config Rules", "Role-Based Parameter Configuration (1st Trader vs 2nd Trader)"],
+                "hedge-config": ["Hedge Trader Settings (Global Parameters)", "Global Engine Controls, Spending Limits & Safety Protocols"],
+                "hedge-sessions": ["Hedge Trading Session Records", "Dual-Leg Strategy Session Execution History"],
+                "hedge-positions": ["Hedge Open Position & Trade Orders", "Live Positions, Floating PnL & Orders Audit"],
+                "hedge-events": ["Hedge Macro Event Records", "High-Impact Macro Economic Blackout Dates"],
+                "audit-logs": ["Config Audit Logs", "System Parameter Change Audits"],
+                "trade-reports": ["CSV Trade Reports", "Export Complete Trade & PnL History"]
+            };
+
+            if (titleMap[targetView]) {
+                document.getElementById("workspace-title").innerText = titleMap[targetView][0];
+                document.getElementById("workspace-subtitle").innerText = titleMap[targetView][1];
+            }
+
+            // Trigger view specific loaders
+            if (targetView === "straddle-config") loadStraddleConfig();
+            if (targetView === "hedge-config" || targetView === "hedge-strategies") loadHedgeConfig();
+            if (targetView === "audit-logs") loadAuditLogs();
+        });
+    });
+
+    // Logout
+    document.getElementById("logout-btn").addEventListener("click", () => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        window.location.href = "/";
+    });
+
+    // Forms
     document.getElementById("straddle-config-form").addEventListener("submit", saveStraddleConfig);
     document.getElementById("hedge-config-form").addEventListener("submit", saveHedgeConfig);
-});
 
-async function handleLogin(e) {
-    e.preventDefault();
-    const user = document.getElementById("login-username").value;
-    const pass = document.getElementById("login-password").value;
-    const errDiv = document.getElementById("login-error");
-
-    const formData = new URLSearchParams();
-    formData.append("username", user);
-    formData.append("password", pass);
-
-    try {
-        const res = await fetch("/api/v1/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: formData
-        });
-
-        if (res.ok) {
-            const data = await res.json();
-            authToken = data.access_token;
-            localStorage.setItem("token", authToken);
-            localStorage.setItem("username", data.username);
-            localStorage.setItem("role", data.role);
-            errDiv.style.display = "none";
-            initApp();
-        } else {
-            errDiv.innerText = "Invalid credentials. Try admin / Admin@123";
-            errDiv.style.display = "block";
-        }
-    } catch (err) {
-        errDiv.innerText = "Connection error. Ensure backend is running.";
-        errDiv.style.display = "block";
-    }
-}
-
-function logout() {
-    localStorage.clear();
-    location.reload();
-}
-
-function initApp() {
-    document.getElementById("login-modal").style.display = "none";
-    document.getElementById("app-sidebar").style.display = "flex";
-    document.getElementById("app-container").style.display = "block";
-
-    document.getElementById("user-display-name").innerText = localStorage.getItem("username") || "Admin User";
-    document.getElementById("user-display-role").innerText = (localStorage.getItem("role") || "ADMIN").toUpperCase();
-
+    // Initial Load & WebSocket
     fetchSnapshot();
     connectWebSocket();
-    loadStraddleConfig();
-    loadHedgeConfig();
-    loadAuditLogs();
-}
-
-function switchNav(viewId, el) {
-    document.querySelectorAll(".content-view").forEach(v => v.style.display = "none");
-    document.querySelectorAll(".nav-link").forEach(n => n.classList.remove("active"));
-
-    const targetView = document.getElementById(`view-${viewId}`);
-    if (targetView) targetView.style.display = "block";
-    if (el) el.classList.add("active");
-
-    const titleMap = {
-        'straddle-dashboard': 'Live Straddle Dashboard',
-        'straddle-config': 'Straddle Bot Settings',
-        'straddle-sessions': 'Straddle Trading Sessions',
-        'straddle-orders': 'Straddle Trade Orders & Fills',
-        'straddle-ledger': 'Straddle Wallet Ledger Entries',
-        'hedge-dashboard': 'Live Hedge Dashboard',
-        'hedge-strategies': 'Hedge Strategy Config Rules',
-        'hedge-config': 'Hedge Trader Settings',
-        'hedge-sessions': 'Hedge Trading Sessions',
-        'hedge-positions': 'Hedge Open Positions & Orders',
-        'hedge-events': 'Hedge Macro Events',
-        'audit-logs': 'Config Audit Logs & System Health',
-        'trade-reports': 'CSV Trade Reports Export'
-    };
-    document.getElementById("current-view-title").innerText = titleMap[viewId] || 'Hedgesnstraddle Control Panel';
-
-    if (viewId === "audit-logs") loadAuditLogs();
-}
+    setInterval(fetchSnapshot, 3000);
+});
 
 async function fetchSnapshot() {
     try {
@@ -105,24 +76,33 @@ async function fetchSnapshot() {
         });
         if (res.ok) {
             const data = await res.json();
+            
+            // Market Prices
             const btcMark = data.market.btc_mark_price;
             const btcSpot = data.market.btc_spot_price;
-
             document.getElementById("ticker-btc-mark").innerText = `$${btcMark.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             document.getElementById("ticker-btc-spot").innerText = `$${btcSpot.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
-            // Update Straddle Replica Tiles
+            // Status Ribbons
+            const sState = data.straddle.state;
+            const hState = data.hedge.state;
+            document.getElementById("ribbon-straddle-state").innerText = `Straddle Engine: ${sState}`;
+            document.getElementById("ribbon-straddle-state").className = `badge ${sState === 'IN_TRADE' || sState === 'RUNNING' ? 'badge-success' : 'badge-info'}`;
+            
+            document.getElementById("ribbon-hedge-state").innerText = `Hedge Engine: ${hState}`;
+            document.getElementById("ribbon-hedge-state").className = `badge ${hState === 'RUNNING' ? 'badge-success' : 'badge-info'}`;
+
+            // Update Straddle Hero Cards
             const activeStraddle = data.straddle.active_session;
             if (activeStraddle) {
-                const pnl = activeStraddle.pnl_realized || 0;
-                document.getElementById("straddle-hero-total-pnl").innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
-                document.getElementById("straddle-hero-realized-pnl").innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                document.getElementById("straddle-hero-spot").innerText = `$${(activeStraddle.btc_entry_spot || btcSpot).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("straddle-hero-pnl").innerText = `${(activeStraddle.pnl_realized || 0) >= 0 ? '+' : ''}$${(activeStraddle.pnl_realized || 0).toFixed(2)}`;
                 document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle.net_straddle_ask || 0).toFixed(2)}`;
                 
-                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike || (Math.round(btcSpot / 100) * 100 + 500);
+                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike || (Math.round(btcSpot / 100) * 100 + 300);
                 document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 180.50).toFixed(2)}`;
                 
-                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike || (Math.round(btcSpot / 100) * 100 - 500);
+                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike || (Math.round(btcSpot / 100) * 100 - 300);
                 document.getElementById("put-ask-val").innerText = `$${(activeStraddle.put_ask || 195.20).toFixed(2)}`;
 
                 document.getElementById("fut-entry-val").innerText = `$${(activeStraddle.futures_entry_price || btcMark).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
@@ -130,7 +110,7 @@ async function fetchSnapshot() {
             }
             document.getElementById("straddle-hero-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
-            // Update Hedge Replica Hero Tiles
+            // Update Hedge Hero Cards
             const activeHedge = data.hedge.active_session;
             if (activeHedge) {
                 document.getElementById("hedge-hero-bull").innerText = `LONG @ $${(activeHedge.bull_entry || (btcSpot - 50)).toLocaleString()}`;
@@ -151,7 +131,7 @@ async function fetchSnapshot() {
                         <td>${s.call_strike || '-'}</td>
                         <td>${s.put_strike || '-'}</td>
                         <td>$${(s.net_straddle_ask || 0).toFixed(2)}</td>
-                        <td style="color: ${s.pnl_realized >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${s.pnl_realized.toFixed(2)}</td>
+                        <td style="color: ${(s.pnl_realized || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${(s.pnl_realized || 0).toFixed(2)}</td>
                         <td>${s.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
@@ -171,7 +151,7 @@ async function fetchSnapshot() {
                         <td>$${(h.bear_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bull_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bear_exit || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td style="color: ${h.realized_pnl >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${h.realized_pnl.toFixed(2)}</td>
+                        <td style="color: ${(h.realized_pnl || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${(h.realized_pnl || 0).toFixed(2)}</td>
                         <td>${h.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
@@ -227,9 +207,8 @@ const STRADDLE_FIELDS = [
     "RUNTIME_MODE", "BOT_ENABLED", "PAPER_TRADING_ENABLED", "WORKER_ID",
     "BINANCE_API_KEY", "BINANCE_SECRET_KEY", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID",
     "WINDOW_START", "WINDOW_END", "FUTURES_ENTRY_CUTOFF", "SQ_START", "SQ_END",
-    "FUTURES_SQUAREOFF", "STRADDLE_EXPIRY_TIME", "TRADE_QTY", "MIN_STRIKE_GAP",
-    "MAX_TOTAL_MARK", "MAX_PREMIUM_GAP", "FUTURES_TP_MULTIPLIER", "FUTURES_LEVERAGE",
-    "PAPER_WALLET_USDT"
+    "FUTURES_SQUAREOFF", "STRADDLE_EXPIRY_TIME", "TRADE_QTY", "MAX_TOTAL_MARK", 
+    "FUTURES_TP_MULTIPLIER", "FUTURES_LEVERAGE", "PAPER_WALLET_USDT"
 ];
 
 async function loadStraddleConfig() {
@@ -299,29 +278,102 @@ async function loadHedgeConfig() {
                 if (input) input.value = v;
             }
 
-            // Render Hedge Strategy Cards
+            // Render Role-Based Hedge Strategy Cards (1st Trader vs 2nd Trader)
             const grid = document.getElementById("hedge-strategy-cards-grid");
             if (data.strategies && data.strategies.length > 0) {
-                grid.innerHTML = data.strategies.map(s => `
-                    <div class="hero-tile">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
-                            <div style="font-weight: 700; font-size: 15px; color: var(--text-primary);">${s.strategy_name}</div>
-                            <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
+                grid.innerHTML = data.strategies.map(s => {
+                    const startH = (s.trade_start || "05:00").split(":")[0];
+                    const startM = (s.trade_start || "05:00").split(":")[1];
+                    const endH = (s.trade_end || "07:00").split(":")[0];
+                    const endM = (s.trade_end || "07:00").split(":")[1];
+                    const fcH = (s.force_close || "13:00").split(":")[0];
+                    const fcM = (s.force_close || "13:00").split(":")[1];
+
+                    return `
+                    <div class="glass-panel" style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle);">
+                            <div style="font-weight: 700; font-size: 16px; color: var(--brand-cyan);">🎯 ${s.strategy_name} Configuration (Role Rule)</div>
+                            <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Role Active' : 'Role Disabled'}</span>
                         </div>
-                        <div style="font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono);">
-                            <div style="display: flex; justify-content: space-between;"><span>Direction:</span> <span style="color: var(--brand-cyan); font-weight: 600;">${s.direction}</span></div>
-                            <div style="display: flex; justify-content: space-between;"><span>Trade Window Open:</span> <span style="color: var(--text-primary);">${s.trade_start}</span></div>
-                            <div style="display: flex; justify-content: space-between;"><span>Trade Window Close:</span> <span style="color: var(--text-primary);">${s.trade_end}</span></div>
-                            <div style="display: flex; justify-content: space-between;"><span>Force Close Squareoff:</span> <span style="color: var(--accent-amber);">${s.force_close}</span></div>
-                            <div style="display: flex; justify-content: space-between;"><span>Contract Quantity:</span> <span style="color: var(--text-primary);">${s.contract_qty} BTC</span></div>
-                            <div style="display: flex; justify-content: space-between;"><span>Max Premium Limit:</span> <span style="color: var(--accent-emerald); font-weight: 600;">$${s.max_premium}</span></div>
-                        </div>
+                        <form onsubmit="saveRoleStrategyConfig(event, ${s.id}, '${s.strategy_name}')" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                            <div class="form-group">
+                                <label>Trade Window Open (HH:MM)</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="number" id="role_${s.id}_start_h" value="${startH}" min="0" max="23" placeholder="HH">
+                                    <input type="number" id="role_${s.id}_start_m" value="${startM}" min="0" max="59" placeholder="MM">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Trade Window Close (HH:MM)</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="number" id="role_${s.id}_end_h" value="${endH}" min="0" max="23" placeholder="HH">
+                                    <input type="number" id="role_${s.id}_end_m" value="${endM}" min="0" max="59" placeholder="MM">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Force Close Squareoff (HH:MM)</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="number" id="role_${s.id}_fc_h" value="${fcH}" min="0" max="23" placeholder="HH">
+                                    <input type="number" id="role_${s.id}_fc_m" value="${fcM}" min="0" max="59" placeholder="MM">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Contract Quantity (BTC)</label>
+                                <input type="number" step="0.1" id="role_${s.id}_qty" value="${s.contract_qty || 1.0}">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Premium Limit ($)</label>
+                                <input type="number" step="1.0" id="role_${s.id}_max_prem" value="${s.max_premium || 250.0}">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Time Value Limit ($)</label>
+                                <input type="number" step="1.0" id="role_${s.id}_max_tv" value="${s.max_time_value || 229.0}">
+                            </div>
+                            <div style="grid-column: 1 / -1; text-align: right; margin-top: 8px;">
+                                <button type="submit" class="btn-primary" style="font-size: 13px; padding: 8px 18px;">💾 Save ${s.strategy_name} Role Settings</button>
+                            </div>
+                        </form>
                     </div>
-                `).join("");
+                `}).join("");
             }
         }
     } catch (err) {
         console.error(err);
+    }
+}
+
+async function saveRoleStrategyConfig(e, stratId, stratName) {
+    e.preventDefault();
+    const payload = {
+        id: stratId,
+        strategy_name: stratName,
+        trade_start_h: parseInt(document.getElementById(`role_${stratId}_start_h`).value),
+        trade_start_m: parseInt(document.getElementById(`role_${stratId}_start_m`).value),
+        trade_end_h: parseInt(document.getElementById(`role_${stratId}_end_h`).value),
+        trade_end_m: parseInt(document.getElementById(`role_${stratId}_end_m`).value),
+        force_close_h: parseInt(document.getElementById(`role_${stratId}_fc_h`).value),
+        force_close_m: parseInt(document.getElementById(`role_${stratId}_fc_m`).value),
+        contract_qty: parseFloat(document.getElementById(`role_${stratId}_qty`).value),
+        max_premium: parseFloat(document.getElementById(`role_${stratId}_max_prem`).value),
+        max_time_value: parseFloat(document.getElementById(`role_${stratId}_max_tv`).value)
+    };
+
+    try {
+        const res = await fetch("/api/v1/config/hedge/strategies", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`
+            },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            const data = await res.json();
+            alert(data.message);
+            loadHedgeConfig();
+        }
+    } catch (err) {
+        alert(`Error saving role strategy config for ${stratName}`);
     }
 }
 
