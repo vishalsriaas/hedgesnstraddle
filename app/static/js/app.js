@@ -94,11 +94,13 @@ async function fetchSnapshot() {
 
             // Update Straddle Hero Cards
             const activeStraddle = data.straddle.active_session;
+            document.getElementById("straddle-hero-spot").innerText = `$${(activeStraddle ? (activeStraddle.btc_entry_spot || btcSpot) : btcSpot).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById("straddle-hero-pnl").innerText = `${(activeStraddle ? (activeStraddle.pnl_realized || 0) : 0) >= 0 ? '+' : ''}$${(activeStraddle ? (activeStraddle.pnl_realized || 0) : 0).toFixed(2)}`;
+            
+            const liveNetPrem = (data.straddle.live_call_ask || 180.50) + (data.straddle.live_put_ask || 195.20);
+            document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle ? (activeStraddle.net_straddle_ask || liveNetPrem) : liveNetPrem).toFixed(2)}`;
+            
             if (activeStraddle) {
-                document.getElementById("straddle-hero-spot").innerText = `$${(activeStraddle.btc_entry_spot || btcSpot).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-                document.getElementById("straddle-hero-pnl").innerText = `${(activeStraddle.pnl_realized || 0) >= 0 ? '+' : ''}$${(activeStraddle.pnl_realized || 0).toFixed(2)}`;
-                document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle.net_straddle_ask || 0).toFixed(2)}`;
-                
                 document.getElementById("call-strike-val").innerText = activeStraddle.call_strike;
                 document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 0).toFixed(2)}`;
                 
@@ -122,9 +124,15 @@ async function fetchSnapshot() {
             // Update Hedge Hero Cards
             const activeHedge = data.hedge.active_session;
             if (activeHedge) {
-                document.getElementById("hedge-hero-bull").innerText = `LONG @ $${(activeHedge.bull_entry || (btcSpot - 50)).toLocaleString()}`;
-                document.getElementById("hedge-hero-bear").innerText = `SHORT @ $${(activeHedge.bear_entry || (btcSpot + 50)).toLocaleString()}`;
+                document.getElementById("hedge-hero-bull").innerText = `LONG @ $${(activeHedge.bull_entry || (btcSpot - 50)).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("hedge-hero-bear").innerText = `SHORT @ $${(activeHedge.bear_entry || (btcSpot + 50)).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
                 document.getElementById("hedge-hero-total-pnl").innerText = `${(activeHedge.realized_pnl || 0) >= 0 ? '+' : ''}$${(activeHedge.realized_pnl || 0).toFixed(2)}`;
+            } else {
+                const bullPrice = data.hedge.live_bull_entry || (btcSpot - 50);
+                const bearPrice = data.hedge.live_bear_entry || (btcSpot + 50);
+                document.getElementById("hedge-hero-bull").innerText = `LONG @ $${bullPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("hedge-hero-bear").innerText = `SHORT @ $${bearPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("hedge-hero-total-pnl").innerText = `+$0.00`;
             }
 
             // Render Session Tables

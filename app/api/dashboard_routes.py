@@ -58,6 +58,8 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "state": hedge_engine.state,
             "config": hedge_cfg,
             "active_session": latest_hedge,
+            "live_bull_entry": round(spot_price - 50.0, 2),
+            "live_bear_entry": round(spot_price + 50.0, 2),
             "history": hedge_sessions,
             "orders": hedge_orders
         },
