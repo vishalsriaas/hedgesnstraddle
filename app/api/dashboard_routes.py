@@ -32,7 +32,24 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
     hedge_orders = db.query(HedgeTradeOrder).order_by(HedgeTradeOrder.id.desc()).limit(50).all()
     hedge_positions = db.query(HedgeOpenPosition).all()
 
-    paper_wallet = float(straddle_cfg.get("PAPER_WALLET_USDT", "100000.0"))
+    cash_balance = float(straddle_cfg.get("PAPER_WALLET_USDT", "100000.0"))
+
+    # Calculate Mark-to-Market Total Wallet Valuation (Broker Standard Equity Formula)
+    open_positions_val = 0.0
+    if straddle_engine.active_session_id:
+        qty = float(straddle_cfg.get("TRADE_QTY", "10"))
+        # 1. Option legs current mark valuation
+        open_positions_val += (straddle_engine.current_call_mark + straddle_engine.current_put_mark) * qty
+        
+        # 2. Futures leg floating PnL if in trade
+        if straddle_engine.state == "IN_TRADE":
+            latest_sess = db.query(StraddleSession).filter(StraddleSession.id == straddle_engine.active_session_id).first()
+            if latest_sess and latest_sess.futures_entry_price:
+                fut_side = 1 if (latest_sess.futures_tp_price > latest_sess.futures_entry_price) else -1
+                fut_pnl = fut_side * (mark_price - latest_sess.futures_entry_price) * qty
+                open_positions_val += fut_pnl
+
+    total_wallet_valuation = round(cash_balance + open_positions_val, 2)
 
     # System Health Checks
     health_issues = []
@@ -77,7 +94,9 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "audit_issues": health_issues
         },
         "wallet": {
-            "paper_wallet_usdt": paper_wallet,
+            "paper_wallet_usdt": total_wallet_valuation,
+            "cash_balance": cash_balance,
+            "open_positions_val": open_positions_val,
             "currency": "USD"
         }
     }
