@@ -448,13 +448,24 @@ const STRADDLE_FIELDS = [
     "MAX_PREMIUM_GAP", "SKIP_WEEKENDS", "FUTURES_TP_MULTIPLIER", "FUTURES_LEVERAGE", "PAPER_WALLET_USDT"
 ];
 
-async function loadStraddleConfig() {
-    // System defaults — shown as placeholder; field stays empty when value matches default
-    const STRADDLE_DEFAULTS = {
-        "TRADE_QTY": "10",
-        "FUTURES_TP_MULTIPLIER": "2"
-    };
+const STRADDLE_DEFAULTS = {
+    "WINDOW_START": "05:00",
+    "WINDOW_END": "07:30",
+    "FUTURES_ENTRY_CUTOFF": "11:00",
+    "SQ_START": "11:00",
+    "SQ_END": "12:30",
+    "FUTURES_SQUAREOFF": "12:30",
+    "STRADDLE_EXPIRY_TIME": "13:30",
+    "TRADE_QTY": "10",
+    "MAX_TOTAL_MARK": "400.0",
+    "SKIP_WEEKENDS": "1",
+    "MAX_PREMIUM_GAP": "150.0",
+    "FUTURES_TP_MULTIPLIER": "2",
+    "FUTURES_LEVERAGE": "10",
+    "PAPER_WALLET_USDT": "100000.0"
+};
 
+async function loadStraddleConfig() {
     try {
         const res = await fetch("/api/v1/config/straddle", {
             headers: { "Authorization": `Bearer ${authToken}` }
@@ -465,7 +476,7 @@ async function loadStraddleConfig() {
                 const input = document.getElementById(`cfg_straddle_${k}`);
                 if (input) {
                     // Leave blank (show placeholder) when value is the system default
-                    if (STRADDLE_DEFAULTS[k] && v === STRADDLE_DEFAULTS[k]) {
+                    if (STRADDLE_DEFAULTS[k] && String(v) === String(STRADDLE_DEFAULTS[k])) {
                         input.value = "";
                     } else {
                         input.value = v;
@@ -486,12 +497,6 @@ async function loadStraddleConfig() {
 
 async function saveStraddleConfig(e) {
     e.preventDefault();
-
-    // System defaults used when field is left blank
-    const STRADDLE_DEFAULTS = {
-        "TRADE_QTY": "10",
-        "FUTURES_TP_MULTIPLIER": "2"
-    };
 
     const payload = {};
     STRADDLE_FIELDS.forEach(k => {

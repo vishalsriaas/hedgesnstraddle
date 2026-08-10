@@ -167,11 +167,11 @@ class StraddleEngine:
         """Returns dynamic workflow status and limit order computations for the frontend."""
         cfg = self.load_config(db)
         
-        window_start = cfg.get("WINDOW_START", "18:50")
-        window_end = cfg.get("WINDOW_END", "18:55")
-        futures_entry_cutoff = cfg.get("FUTURES_ENTRY_CUTOFF", "18:56")
-        sq_end = cfg.get("SQ_END", "19:02")
-        max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
+        window_start = cfg.get("WINDOW_START", "05:00")
+        window_end = cfg.get("WINDOW_END", "07:30")
+        futures_entry_cutoff = cfg.get("FUTURES_ENTRY_CUTOFF", "11:00")
+        sq_end = cfg.get("SQ_END", "12:30")
+        max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "400.0"))
         max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
         
         now_time_full = datetime.now(ist).strftime("%H:%M:%S")
@@ -269,10 +269,10 @@ class StraddleEngine:
                 now_time_str = datetime.now(ist).strftime("%H:%M")
                 now_rel = get_session_relative_minutes(now_time_str)
                 
-                window_start = cfg.get("WINDOW_START", "18:50")
-                window_end = cfg.get("WINDOW_END", "18:55")
-                cutoff_time = cfg.get("FUTURES_ENTRY_CUTOFF", "18:56")
-                sq_end = cfg.get("SQ_END", "19:02")
+                window_start = cfg.get("WINDOW_START", "05:00")
+                window_end = cfg.get("WINDOW_END", "07:30")
+                cutoff_time = cfg.get("FUTURES_ENTRY_CUTOFF", "11:00")
+                sq_end = cfg.get("SQ_END", "12:30")
                 
                 w_start_rel = get_session_relative_minutes(window_start)
                 w_end_rel = get_session_relative_minutes(window_end)
@@ -303,7 +303,7 @@ class StraddleEngine:
 
                 # Punch straddle entry if all conditions met
                 if self.state == "ENTRY_WINDOW" and not self.active_session_id:
-                    max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
+                    max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "400.0"))
                     max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
 
                     premium_ok = (self.combined_premium <= max_premium_limit)

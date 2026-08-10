@@ -388,31 +388,38 @@
                     <div class="form-grid" style="margin-bottom: 28px;">
                         <div class="form-group">
                             <label>Entry Window Open (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_WINDOW_START" value="18:50">
+                            <input type="text" id="cfg_straddle_WINDOW_START" placeholder="05:00" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 05:00. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Entry Window Close (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_WINDOW_END" value="18:55">
+                            <input type="text" id="cfg_straddle_WINDOW_END" placeholder="07:30" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 07:30. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Futures Entry Cutoff (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_FUTURES_ENTRY_CUTOFF" value="18:56">
+                            <input type="text" id="cfg_straddle_FUTURES_ENTRY_CUTOFF" placeholder="11:00" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 11:00. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Options Recovery Start (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_SQ_START" value="18:57">
+                            <input type="text" id="cfg_straddle_SQ_START" placeholder="11:00" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 11:00. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Universal Hard Squareoff (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_SQ_END" value="19:02">
+                            <input type="text" id="cfg_straddle_SQ_END" placeholder="12:30" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 12:30. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Futures Hard Squareoff (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_FUTURES_SQUAREOFF" value="19:02">
+                            <input type="text" id="cfg_straddle_FUTURES_SQUAREOFF" placeholder="12:30" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 12:30. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Expiry Time (HH:MM)</label>
-                            <input type="text" id="cfg_straddle_STRADDLE_EXPIRY_TIME" value="19:00">
+                            <input type="text" id="cfg_straddle_STRADDLE_EXPIRY_TIME" placeholder="13:30" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 13:30. Leave blank to use default.</small>
                         </div>
                     </div>
 
@@ -425,7 +432,8 @@
                         </div>
                         <div class="form-group">
                             <label>Max Total Mark Premium ($)</label>
-                            <input type="text" id="cfg_straddle_MAX_TOTAL_MARK" value="1500.0">
+                            <input type="text" id="cfg_straddle_MAX_TOTAL_MARK" placeholder="400" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: $400.0. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Skip Weekend Sessions</label>
@@ -436,7 +444,8 @@
                         </div>
                         <div class="form-group">
                             <label>Max Call/Put Premium Gap ($)</label>
-                            <input type="text" id="cfg_straddle_MAX_PREMIUM_GAP" value="150.0">
+                            <input type="text" id="cfg_straddle_MAX_PREMIUM_GAP" placeholder="150.0" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: $150.0. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Futures Take Profit Multiplier</label>
@@ -445,11 +454,13 @@
                         </div>
                         <div class="form-group">
                             <label>Futures Leverage</label>
-                            <input type="text" id="cfg_straddle_FUTURES_LEVERAGE" value="10">
+                            <input type="text" id="cfg_straddle_FUTURES_LEVERAGE" placeholder="10" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 10x leverage. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Paper Wallet Balance ($)</label>
-                            <input type="text" id="cfg_straddle_PAPER_WALLET_USDT" value="100000.0">
+                            <input type="text" id="cfg_straddle_PAPER_WALLET_USDT" placeholder="100000" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: $100,000.00. Leave blank to use default.</small>
                         </div>
                     </div>
 
