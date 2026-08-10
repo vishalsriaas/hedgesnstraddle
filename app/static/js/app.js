@@ -320,6 +320,63 @@ async function fetchSnapshot() {
                 if (hedgeBody) hedgeBody.innerHTML = hedgeRowsHtml;
                 if (hedgeViewBody) hedgeViewBody.innerHTML = hedgeRowsHtml;
             }
+
+            // Render Straddle Trade Orders & Fills Table
+            const straddleOrdersViewBody = document.getElementById("straddle-orders-view-body");
+            if (data.straddle.orders && data.straddle.orders.length > 0) {
+                const ordersHtml = data.straddle.orders.map(o => `
+                    <tr>
+                        <td><b>#${o.id}</b></td>
+                        <td>Session #${o.session_id}</td>
+                        <td><code>${o.symbol}</code></td>
+                        <td><span class="badge ${o.side === 'BUY' ? 'badge-success' : 'badge-danger'}">${o.side}</span></td>
+                        <td><span class="badge badge-info">${o.leg_label || 'OPTION'}</span></td>
+                        <td>${o.qty}</td>
+                        <td>$${(o.price || 0).toFixed(2)}</td>
+                        <td><span class="badge badge-success">${o.status}</span></td>
+                    </tr>
+                `).join("");
+                if (straddleOrdersViewBody) straddleOrdersViewBody.innerHTML = ordersHtml;
+            } else if (straddleOrdersViewBody) {
+                straddleOrdersViewBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No trade orders submitted yet.</td></tr>';
+            }
+
+            // Render Straddle Wallet Ledger Table
+            const straddleLedgerViewBody = document.getElementById("straddle-ledger-view-body");
+            if (data.straddle.ledger && data.straddle.ledger.length > 0) {
+                const ledgerHtml = data.straddle.ledger.map(l => `
+                    <tr>
+                        <td><b>#${l.id}</b></td>
+                        <td>Session #${l.session_id || '-'}</td>
+                        <td><span class="badge badge-info">${l.entry_type}</span></td>
+                        <td style="color: ${(l.amount || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">${(l.amount || 0) >= 0 ? '+' : ''}$${(l.amount || 0).toFixed(2)}</td>
+                        <td>$${(l.balance_after || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>${l.description || '-'}</td>
+                    </tr>
+                `).join("");
+                if (straddleLedgerViewBody) straddleLedgerViewBody.innerHTML = ledgerHtml;
+            } else if (straddleLedgerViewBody) {
+                straddleLedgerViewBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No wallet ledger entries logged.</td></tr>';
+            }
+
+            // Render Hedge Open Positions Table
+            const hedgePositionsViewBody = document.getElementById("hedge-positions-view-body");
+            if (data.hedge.positions && data.hedge.positions.length > 0) {
+                const posHtml = data.hedge.positions.map(p => `
+                    <tr>
+                        <td><b>#${p.id}</b></td>
+                        <td>${p.symbol}</td>
+                        <td><span class="badge ${p.side === 'BUY' ? 'badge-success' : 'badge-danger'}">${p.side}</span></td>
+                        <td>$${(p.entry_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>${p.qty}</td>
+                        <td>${p.leverage}x</td>
+                        <td style="color: ${(p.unrealized_pnl || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${(p.unrealized_pnl || 0).toFixed(2)}</td>
+                    </tr>
+                `).join("");
+                if (hedgePositionsViewBody) hedgePositionsViewBody.innerHTML = posHtml;
+            } else if (hedgePositionsViewBody) {
+                hedgePositionsViewBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>';
+            }
         }
     } catch (err) {
         console.error("Error fetching snapshot:", err);

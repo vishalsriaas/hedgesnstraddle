@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.schema import User, StraddleConfig, HedgeConfig, StraddleSession, HedgeSession, StraddleWalletLedger, StraddleTradeOrder, HedgeTradeOrder, StraddleFill, HedgeFill, ConfigAuditLog
+from app.models.schema import User, StraddleConfig, HedgeConfig, StraddleSession, HedgeSession, StraddleWalletLedger, StraddleTradeOrder, HedgeTradeOrder, HedgeOpenPosition, StraddleFill, HedgeFill, ConfigAuditLog
 from app.core.auth import get_current_user, require_admin, get_client_ip
 from app.core.binance_client import get_btc_futures_mark_price, get_btc_spot_price
 from app.core.straddle_engine import straddle_engine
@@ -26,9 +26,11 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
     hedge_sessions = db.query(HedgeSession).order_by(HedgeSession.id.desc()).limit(10).all()
     latest_hedge = hedge_sessions[0] if hedge_sessions else None
 
-    # Fills & Orders
-    straddle_orders = db.query(StraddleTradeOrder).order_by(StraddleTradeOrder.id.desc()).limit(10).all()
-    hedge_orders = db.query(HedgeTradeOrder).order_by(HedgeTradeOrder.id.desc()).limit(10).all()
+    # Fills, Orders & Ledger
+    straddle_orders = db.query(StraddleTradeOrder).order_by(StraddleTradeOrder.id.desc()).limit(50).all()
+    straddle_ledger = db.query(StraddleWalletLedger).order_by(StraddleWalletLedger.id.desc()).limit(50).all()
+    hedge_orders = db.query(HedgeTradeOrder).order_by(HedgeTradeOrder.id.desc()).limit(50).all()
+    hedge_positions = db.query(HedgeOpenPosition).all()
 
     paper_wallet = float(straddle_cfg.get("PAPER_WALLET_USDT", "100000.0"))
 
@@ -55,6 +57,7 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "live_put_mark": straddle_engine.current_put_mark,
             "history": straddle_sessions,
             "orders": straddle_orders,
+            "ledger": straddle_ledger,
             "live_monitoring": straddle_engine.get_live_monitoring_snapshot(db)
         },
         "hedge": {
@@ -64,7 +67,8 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "live_bull_entry": round(spot_price - 50.0, 2),
             "live_bear_entry": round(spot_price + 50.0, 2),
             "history": hedge_sessions,
-            "orders": hedge_orders
+            "orders": hedge_orders,
+            "positions": hedge_positions
         },
         "health": {
             "database_healthy": True,
