@@ -38,6 +38,7 @@ class StraddleEngine:
         
         # Live state properties
         self.last_spot_price: float = 64300.0
+        self.last_futures_mark: float = 64300.0
         self.nearest_expiry: str = "N/A"
         self.current_strike: float = 64000.0
         self.current_call_mark: float = 180.50
@@ -96,16 +97,22 @@ class StraddleEngine:
         db.commit()
         logger.info("Successfully applied pending straddle configurations!")
 
-    async def find_same_strike_pair(self, spot: float) -> Tuple[float, float, float, str]:
+    async def find_same_strike_pair(self, futures_mark: float) -> Tuple[float, float, float, str]:
         """
-        Fetches option contracts, filters strictly by the nearest expiry,
-        and selects the Call and Put mark prices at the SAME closest strike level.
+        Finds the nearest ATM strike using BTC FUTURES MARK PRICE as the reference.
+
+        Why futures mark (not spot):
+          - Binance options are priced off the futures mark price, not spot
+          - ITM/OTM is defined as: Call ITM if Strike < futures_mark, Put ITM if Strike > futures_mark
+          - Using futures mark avoids basis drift between spot and futures
+
+        Returns: (best_strike, call_mark_price, put_mark_price, expiry_date)
         """
         tickers = await get_btc_options_mark_prices()
-        
-        # 500 BTC strike step interval fallback
-        base_strike = round(spot / 500.0) * 500.0
-        
+
+        # Fallback: round futures mark to nearest 500 BTC step
+        base_strike = round(futures_mark / 500.0) * 500.0
+
         if not tickers:
             return base_strike, 180.50, 195.20, "N/A"
 
@@ -117,7 +124,7 @@ class StraddleEngine:
                 try:
                     expiry_date = parts[1]
                     strike = float(parts[2])
-                    side = parts[3]
+                    side = parts[3]          # "C" = Call, "P" = Put
                     mark_price = float(t.get("markPrice") or 0.0)
                     parsed_tickers.append({
                         "symbol": sym,
@@ -135,19 +142,24 @@ class StraddleEngine:
         # Filter strictly for NEAREST EXPIRY DATE
         available_expiries = sorted(list(set(item["expiry"] for item in parsed_tickers)))
         nearest = available_expiries[0]
-
         nearest_tickers = [item for item in parsed_tickers if item["expiry"] == nearest]
-        
-        # Find closest strike level K to spot
-        strikes = sorted(list(set(item["strike"] for item in nearest_tickers)), key=lambda x: abs(x - spot))
+
+        # Find closest strike to FUTURES MARK PRICE
+        #   ATM  → strike ≈ futures_mark
+        #   Call ITM → strike < futures_mark  |  Call OTM → strike > futures_mark
+        #   Put  ITM → strike > futures_mark  |  Put  OTM → strike < futures_mark
+        strikes = sorted(
+            list(set(item["strike"] for item in nearest_tickers)),
+            key=lambda k: abs(k - futures_mark)   # ← reference is futures mark
+        )
         best_strike = strikes[0] if strikes else base_strike
 
-        # Retrieve Call and Put marks for this strike
+        # Retrieve Call and Put marks at this strike
         best_call = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "C"), None)
-        best_put = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "P"), None)
+        best_put  = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "P"), None)
 
         call_mark = best_call["mark"] if best_call else 180.50
-        put_mark = best_put["mark"] if best_put else 195.20
+        put_mark  = best_put["mark"]  if best_put  else 195.20
 
         return best_strike, call_mark, put_mark, nearest
 
@@ -193,6 +205,7 @@ class StraddleEngine:
             "state": self.state,
             "server_time": now_time_full,
             "last_spot_price": self.last_spot_price,
+            "last_futures_mark": self.last_futures_mark,
             "nearest_expiry": self.nearest_expiry,
             "current_strike": self.current_strike,
             "current_call_mark": self.current_call_mark,
@@ -236,8 +249,13 @@ class StraddleEngine:
                 # Query live metrics
                 spot = await get_btc_spot_price()
                 self.last_spot_price = spot
-                
-                strike, call_mark, put_mark, expiry = await self.find_same_strike_pair(spot)
+
+                # Use FUTURES MARK PRICE as reference for strike selection
+                # (Binance options are priced relative to futures mark, not spot)
+                futures_mark = await get_btc_futures_mark_price()
+                self.last_futures_mark = futures_mark
+
+                strike, call_mark, put_mark, expiry = await self.find_same_strike_pair(futures_mark)
                 self.current_strike = strike
                 self.current_call_mark = call_mark
                 self.current_put_mark = put_mark

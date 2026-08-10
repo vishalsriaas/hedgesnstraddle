@@ -47,6 +47,7 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "state": straddle_engine.state,
             "config": straddle_cfg,
             "active_session": latest_straddle,
+            "live_futures_mark": straddle_engine.last_futures_mark,  # reference for strike ITM/OTM calc
             "live_call_strike": straddle_engine.current_strike,
             "live_put_strike": straddle_engine.current_strike,
             "live_call_mark": straddle_engine.current_call_mark,
