@@ -290,6 +290,12 @@ class StraddleEngine:
                     except Exception:
                         pass
 
+                # Restore active session from DB if not loaded in memory (e.g. after server restart)
+                if not self.active_session_id:
+                    open_sess = db.query(StraddleSession).filter(StraddleSession.status == "Open").order_by(StraddleSession.id.desc()).first()
+                    if open_sess:
+                        self.active_session_id = open_sess.id
+
                 # Handle state transitions and simulated trade punching
                 if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE", "SQUAREOFF", "COMPLETED"]:
                     self.state = "ENTRY_WINDOW"
@@ -301,11 +307,11 @@ class StraddleEngine:
                     max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
 
                     premium_ok = (self.combined_premium <= max_premium_limit)
-                    # FIX: use call_mark / put_mark (not the old call_ask/put_ask which were renamed)
                     gap_ok = (abs(call_mark - put_mark) <= max_gap_limit)
 
                     last_traded = cfg.get("LAST_TRADED_EXPIRY", "")
-                    already_traded = (expiry != "N/A" and last_traded == expiry)
+                    db_existing_sess = db.query(StraddleSession).filter(StraddleSession.expiry_sym == expiry).first() if expiry != "N/A" else None
+                    already_traded = (expiry != "N/A" and (last_traded == expiry or db_existing_sess is not None))
 
                     if premium_ok and gap_ok and not is_weekend_session and not already_traded:
                         qty = float(cfg.get("TRADE_QTY", "10"))
