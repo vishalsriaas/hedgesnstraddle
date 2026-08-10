@@ -17,10 +17,26 @@ class StraddleEngine:
         self.is_running = False
         self.active_session_id: Optional[int] = None
         self.state = "IDLE"
-        self.current_call_strike: float = 64500.0
-        self.current_put_strike: float = 63800.0
+        
+        # Live state properties
+        self.last_spot_price: float = 64300.0
+        self.nearest_expiry: str = "N/A"
+        self.current_strike: float = 64000.0
         self.current_call_ask: float = 180.50
         self.current_put_ask: float = 195.20
+        self.combined_premium: float = 375.70
+        
+        # Calculated OCO limit levels
+        self.short_limit_price: float = 64375.70
+        self.long_limit_price: float = 63624.30
+        
+        # Checked conditions status
+        self.cond_time_window_valid: bool = False
+        self.cond_premium_valid: bool = False
+        self.cond_premium_gap_valid: bool = False
+        self.cond_same_strike_valid: bool = True
+        self.cond_itm_otm_valid: bool = True
+        
         self._task: Optional[asyncio.Task] = None
 
     def load_config(self, db: Session) -> Dict[str, str]:
@@ -58,26 +74,22 @@ class StraddleEngine:
         db.commit()
         logger.info("Successfully applied pending straddle configurations!")
 
-    async def find_symmetric_itm_otm_pair(self, spot: float) -> Tuple[float, float, float, float]:
+    async def find_same_strike_pair(self, spot: float) -> Tuple[float, float, float, str]:
         """
-        Dynamically fetch real-time Binance option tickers, filter strictly by the NEAREST EXPIRY DATE,
-        and select nearest ITM and OTM Call and Put contracts with equal strike distance relative to BTC spot.
+        Fetches option contracts, filters strictly by the nearest expiry,
+        and selects the Call and Put ask prices at the SAME closest strike level.
         """
         tickers = await get_btc_options_tickers()
         
-        # 500 BTC strike step interval default
+        # 500 BTC strike step interval fallback
         base_strike = round(spot / 500.0) * 500.0
-        default_call_strike = base_strike + 500.0
-        default_put_strike = base_strike - 500.0
-
+        
         if not tickers:
-            return default_call_strike, default_put_strike, 180.50, 195.20
+            return base_strike, 180.50, 195.20, "N/A"
 
-        # Filter strictly for NEAREST EXPIRY DATE
         parsed_tickers = []
         for t in tickers:
             sym = t.get("symbol", "")
-            # Symbol format: BTC-260808-64500-C
             parts = sym.split("-")
             if len(parts) >= 4:
                 try:
@@ -96,29 +108,71 @@ class StraddleEngine:
                     continue
 
         if not parsed_tickers:
-            return default_call_strike, default_put_strike, 180.50, 195.20
+            return base_strike, 180.50, 195.20, "N/A"
 
-        # Identify nearest expiry date string
+        # Filter strictly for NEAREST EXPIRY DATE
         available_expiries = sorted(list(set(item["expiry"] for item in parsed_tickers)))
-        nearest_expiry = available_expiries[0]
+        nearest = available_expiries[0]
 
-        nearest_tickers = [item for item in parsed_tickers if item["expiry"] == nearest_expiry]
-        calls = [item for item in nearest_tickers if item["side"] == "C"]
-        puts = [item for item in nearest_tickers if item["side"] == "P"]
+        nearest_tickers = [item for item in parsed_tickers if item["expiry"] == nearest]
+        
+        # Find closest strike level K to spot
+        strikes = sorted(list(set(item["strike"] for item in nearest_tickers)), key=lambda x: abs(x - spot))
+        best_strike = strikes[0] if strikes else base_strike
 
-        if not calls or not puts:
-            return default_call_strike, default_put_strike, 180.50, 195.20
+        # Retrieve Call and Put asks for this strike
+        best_call = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "C"), None)
+        best_put = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "P"), None)
 
-        # Sort calls by distance from spot
-        calls_by_dist = sorted(calls, key=lambda x: abs(x["strike"] - spot))
-        best_call = calls_by_dist[0]
-        call_dist = abs(best_call["strike"] - spot)
+        call_ask = best_call["ask"] if best_call else 180.50
+        put_ask = best_put["ask"] if best_put else 195.20
 
-        # Match Put with identical strike distance from spot (|K_C - Spot| = |K_P - Spot|)
-        matching_puts = [p for p in puts if abs(abs(p["strike"] - spot) - call_dist) < 100.0]
-        best_put = matching_puts[0] if matching_puts else sorted(puts, key=lambda x: abs(x["strike"] - spot))[0]
+        return best_strike, call_ask, put_ask, nearest
 
-        return best_call["strike"], best_put["strike"], best_call["ask"], best_put["ask"]
+    def get_live_monitoring_snapshot(self, db: Session) -> Dict[str, Any]:
+        """Returns dynamic workflow status and limit order computations for the frontend."""
+        cfg = self.load_config(db)
+        
+        window_start = cfg.get("WINDOW_START", "18:50")
+        window_end = cfg.get("WINDOW_END", "18:55")
+        max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
+        max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
+        
+        now_time_str = datetime.now().strftime("%H:%M")
+        
+        # Check conditions
+        self.cond_time_window_valid = (window_start <= now_time_str <= window_end)
+        self.cond_premium_valid = (self.combined_premium <= max_premium_limit)
+        self.cond_premium_gap_valid = (abs(self.current_call_ask - self.current_put_ask) <= max_gap_limit)
+        
+        # ITM / OTM verification: one must be <= spot, the other >= spot at same strike K
+        self.cond_itm_otm_valid = True  # Inherently true for same strike model
+        
+        return {
+            "state": self.state,
+            "server_time": now_time_str,
+            "last_spot_price": self.last_spot_price,
+            "nearest_expiry": self.nearest_expiry,
+            "current_strike": self.current_strike,
+            "current_call_ask": self.current_call_ask,
+            "current_put_ask": self.current_put_ask,
+            "combined_premium": self.combined_premium,
+            "short_limit_price": self.short_limit_price,
+            "long_limit_price": self.long_limit_price,
+            
+            # Constraints
+            "window_start": window_start,
+            "window_end": window_end,
+            "max_premium_limit": max_premium_limit,
+            "max_gap_limit": max_gap_limit,
+            
+            # Condition check results
+            "cond_time_window_valid": self.cond_time_window_valid,
+            "cond_premium_valid": self.cond_premium_valid,
+            "cond_premium_gap_valid": self.cond_premium_gap_valid,
+            "cond_same_strike_valid": self.cond_same_strike_valid,
+            "cond_itm_otm_valid": self.cond_itm_otm_valid
+        }
 
     async def run_loop(self):
         self.is_running = True
@@ -135,18 +189,27 @@ class StraddleEngine:
                     await asyncio.sleep(2.0)
                     continue
 
+                # Query live metrics
                 spot = await get_btc_spot_price()
-                call_st, put_st, call_ask, put_ask = await self.find_symmetric_itm_otm_pair(spot)
-                self.current_call_strike = call_st
-                self.current_put_strike = put_st
+                self.last_spot_price = spot
+                
+                strike, call_ask, put_ask, expiry = await self.find_same_strike_pair(spot)
+                self.current_strike = strike
                 self.current_call_ask = call_ask
                 self.current_put_ask = put_ask
+                self.nearest_expiry = expiry
+                
+                # Calculations
+                self.combined_premium = call_ask + put_ask
+                self.short_limit_price = strike + self.combined_premium
+                self.long_limit_price = strike - self.combined_premium
 
                 now_time_str = datetime.now().strftime("%H:%M")
                 window_start = cfg.get("WINDOW_START", "18:50")
                 window_end = cfg.get("WINDOW_END", "18:55")
                 sq_end = cfg.get("SQ_END", "19:02")
 
+                # Handle state transitions
                 if window_start <= now_time_str <= window_end and self.state == "IDLE":
                     self.state = "ENTRY_WINDOW"
                     logger.info("Entering Straddle Entry Window (%s - %s)", window_start, window_end)

@@ -100,6 +100,25 @@ async function fetchSnapshot() {
             const liveNetPrem = (data.straddle.live_call_ask || 180.50) + (data.straddle.live_put_ask || 195.20);
             document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle ? (activeStraddle.net_straddle_ask || liveNetPrem) : liveNetPrem).toFixed(2)}`;
             
+            // Update Straddle Live Monitor UI
+            const monitor = data.straddle.live_monitoring || {};
+            document.getElementById("straddle-live-time").innerText = `Server Time: ${monitor.server_time || 'N/A'}`;
+            
+            const timeStatus = document.getElementById("cond-time-status");
+            timeStatus.innerText = monitor.cond_time_window_valid ? "✅ Active" : "❌ Inactive";
+            timeStatus.style.color = monitor.cond_time_window_valid ? "var(--accent-emerald)" : "var(--accent-rose)";
+
+            const premiumStatus = document.getElementById("cond-premium-status");
+            premiumStatus.innerText = monitor.cond_premium_valid ? "✅ Valid" : "❌ Limit Exceeded";
+            premiumStatus.style.color = monitor.cond_premium_valid ? "var(--accent-emerald)" : "var(--accent-rose)";
+
+            const gapStatus = document.getElementById("cond-gap-status");
+            gapStatus.innerText = monitor.cond_premium_gap_valid ? "✅ Valid" : "❌ Gap Exceeded";
+            gapStatus.style.color = monitor.cond_premium_gap_valid ? "var(--accent-emerald)" : "var(--accent-rose)";
+
+            document.getElementById("straddle-short-limit").innerText = `$${(monitor.short_limit_price || 0.00).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            document.getElementById("straddle-long-limit").innerText = `$${(monitor.long_limit_price || 0.00).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
             if (activeStraddle) {
                 document.getElementById("call-strike-val").innerText = activeStraddle.call_strike;
                 document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 0).toFixed(2)}`;

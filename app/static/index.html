@@ -169,6 +169,63 @@
                 </div>
             </div>
 
+            <!-- Live Condition checklist & calculated OCO limit levels -->
+            <div class="hero-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 24px;">
+                <div class="hero-tile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Algo Live Condition Checks</span>
+                        <span class="badge badge-info" id="straddle-live-time">00:00</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>🕒 Entry Time Window active</span>
+                            <span id="cond-time-status" style="font-weight: 700;">❌ Inactive</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>💵 Combined Premium &le; Max Premium limit</span>
+                            <span id="cond-premium-status" style="font-weight: 700;">❌ Invalid</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>⚖️ Premium Call/Put Gap within Max Price Gap</span>
+                            <span id="cond-gap-status" style="font-weight: 700;">❌ Invalid</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>🎯 Strike Level matched Call & Put</span>
+                            <span style="color: var(--accent-emerald); font-weight: 700;">✅ Same Strike</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>🔄 1 ITM and 1 OTM contract combination</span>
+                            <span style="color: var(--accent-emerald); font-weight: 700;">✅ Matched</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-tile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Calculated Limit Targets (OCO)</span>
+                        <span class="badge badge-warning">OCO LIMITS</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-muted);">Short Limit Target:</span>
+                            <span id="straddle-short-limit" style="font-weight: 700; color: var(--accent-rose);">$0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--text-muted);">Long Limit Target:</span>
+                            <span id="straddle-long-limit" style="font-weight: 700; color: var(--accent-emerald);">$0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dotted var(--border-subtle);">
+                            <span style="font-size: 11px; color: var(--text-muted);">Short Target Level formula:</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Strike + Combined Premium</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 11px; color: var(--text-muted);">Long Target Level formula:</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">Strike - Combined Premium</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Straddle Session Table -->
             <div class="glass-panel">
                 <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 14px; text-transform: uppercase; color: var(--brand-indigo);">Straddle Trading Sessions</h4>

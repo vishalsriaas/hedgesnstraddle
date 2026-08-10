@@ -47,12 +47,13 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "state": straddle_engine.state,
             "config": straddle_cfg,
             "active_session": latest_straddle,
-            "live_call_strike": straddle_engine.current_call_strike,
-            "live_put_strike": straddle_engine.current_put_strike,
+            "live_call_strike": straddle_engine.current_strike,
+            "live_put_strike": straddle_engine.current_strike,
             "live_call_ask": straddle_engine.current_call_ask,
             "live_put_ask": straddle_engine.current_put_ask,
             "history": straddle_sessions,
-            "orders": straddle_orders
+            "orders": straddle_orders,
+            "live_monitoring": straddle_engine.get_live_monitoring_snapshot(db)
         },
         "hedge": {
             "state": hedge_engine.state,

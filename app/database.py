@@ -60,6 +60,7 @@ def init_database():
             "TRADE_QTY": "0.1",
             "MIN_EXPIRY_HOURS": "0.0",
             "MAX_TOTAL_MARK": "1500.0",
+            "MAX_PREMIUM_GAP": "150.0",
             "FUTURES_TP_MULTIPLIER": "1.0",
             "SCAN_INTERVAL": "1.0",
             "RETRY_TIMEOUT": "5.0",
