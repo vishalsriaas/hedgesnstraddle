@@ -40,51 +40,25 @@ def update_straddle_config(
         if old_val_str == new_val_str:
             continue
 
-        if window_active:
-            pending = db.query(PendingConfig).filter(
-                PendingConfig.config_type == "STRADDLE",
-                PendingConfig.field_name == field_name
-            ).first()
-
-            if pending:
-                pending.pending_value = new_val_str
-                pending.user_email = current_user.email
-            else:
-                db.add(PendingConfig(
-                    config_type="STRADDLE",
-                    field_name=field_name,
-                    pending_value=new_val_str,
-                    user_email=current_user.email
-                ))
-            staged_results.append(field_name)
+        if existing:
+            existing.value = new_val_str
         else:
-            if existing:
-                existing.value = new_val_str
-            else:
-                db.add(StraddleConfig(key=field_name, value=new_val_str))
+            db.add(StraddleConfig(key=field_name, value=new_val_str))
 
-            audit = ConfigAuditLog(
-                user_email=current_user.email,
-                config_type="STRADDLE",
-                field_name=field_name,
-                old_value=old_val_str,
-                new_value=new_val_str,
-                apply_mode="IMMEDIATE",
-                status="APPLIED",
-                ip_address=ip_addr
-            )
-            db.add(audit)
-            applied_results.append(field_name)
+        audit = ConfigAuditLog(
+            user_email=current_user.email,
+            config_type="STRADDLE",
+            field_name=field_name,
+            old_value=old_val_str,
+            new_value=new_val_str,
+            apply_mode="IMMEDIATE",
+            status="APPLIED",
+            ip_address=ip_addr
+        )
+        db.add(audit)
+        applied_results.append(field_name)
 
     db.commit()
-
-    if window_active:
-        return {
-            "status": "DEFERRED",
-            "message": "Trading window active. Changes staged to apply automatically on window close.",
-            "staged_fields": staged_results,
-            "applied_fields": applied_results
-        }
 
     return {
         "status": "APPLIED",
