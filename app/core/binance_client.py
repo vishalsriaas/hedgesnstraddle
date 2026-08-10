@@ -119,8 +119,8 @@ async def get_btc_options_mark_prices() -> List[Dict[str, Any]]:
         )
         return _price_cache.get(cache_key, ([], 0.0))[0]
 
-    # 30-second cache to avoid hammering the endpoint
-    if cache_key in _price_cache and (now - _price_cache[cache_key][1]) < 30.0:
+    # 5-second cache (safe: /eapi/v1/mark costs 5 weight; budget is 6,000/min = 20 calls/sec headroom)
+    if cache_key in _price_cache and (now - _price_cache[cache_key][1]) < 5.0:
         return _price_cache[cache_key][0]
 
     try:
