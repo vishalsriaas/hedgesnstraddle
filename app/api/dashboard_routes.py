@@ -49,8 +49,8 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "active_session": latest_straddle,
             "live_call_strike": straddle_engine.current_strike,
             "live_put_strike": straddle_engine.current_strike,
-            "live_call_mark": straddle_engine.current_call_ask,
-            "live_put_mark": straddle_engine.current_put_ask,
+            "live_call_mark": straddle_engine.current_call_mark,
+            "live_put_mark": straddle_engine.current_put_mark,
             "history": straddle_sessions,
             "orders": straddle_orders,
             "live_monitoring": straddle_engine.get_live_monitoring_snapshot(db)

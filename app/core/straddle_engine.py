@@ -10,7 +10,7 @@ from app.models.schema import (
     StraddleConfig, PendingConfig, ConfigAuditLog, StraddleSession, 
     StraddleTradeOrder, StraddleFill, StraddleWalletLedger
 )
-from app.core.binance_client import get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_tickers
+from app.core.binance_client import get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_tickers, get_btc_options_mark_prices
 
 logger = logging.getLogger("hedgesnstraddle.straddle_engine")
 
@@ -40,8 +40,8 @@ class StraddleEngine:
         self.last_spot_price: float = 64300.0
         self.nearest_expiry: str = "N/A"
         self.current_strike: float = 64000.0
-        self.current_call_ask: float = 180.50
-        self.current_put_ask: float = 195.20
+        self.current_call_mark: float = 180.50
+        self.current_put_mark: float = 195.20
         self.combined_premium: float = 375.70
         
         # Calculated OCO limit levels
@@ -99,9 +99,9 @@ class StraddleEngine:
     async def find_same_strike_pair(self, spot: float) -> Tuple[float, float, float, str]:
         """
         Fetches option contracts, filters strictly by the nearest expiry,
-        and selects the Call and Put ask prices at the SAME closest strike level.
+        and selects the Call and Put mark prices at the SAME closest strike level.
         """
-        tickers = await get_btc_options_tickers()
+        tickers = await get_btc_options_mark_prices()
         
         # 500 BTC strike step interval fallback
         base_strike = round(spot / 500.0) * 500.0
@@ -118,7 +118,7 @@ class StraddleEngine:
                     expiry_date = parts[1]
                     strike = float(parts[2])
                     side = parts[3]
-                    mark_price = float(t.get("markPrice", 0.0) or t.get("askPrice", 0.0))
+                    mark_price = float(t.get("markPrice") or 0.0)
                     parsed_tickers.append({
                         "symbol": sym,
                         "expiry": expiry_date,
@@ -172,7 +172,7 @@ class StraddleEngine:
         # Check conditions
         self.cond_time_window_valid = (w_start_rel <= now_rel <= w_end_rel)
         self.cond_premium_valid = (self.combined_premium <= max_premium_limit)
-        self.cond_premium_gap_valid = (abs(self.current_call_ask - self.current_put_ask) <= max_gap_limit)
+        self.cond_premium_gap_valid = (abs(self.current_call_mark - self.current_put_mark) <= max_gap_limit)
         
         # ITM / OTM verification: one must be <= spot, the other >= spot at same strike K
         self.cond_itm_otm_valid = True  # Inherently true for same strike model
@@ -195,8 +195,8 @@ class StraddleEngine:
             "last_spot_price": self.last_spot_price,
             "nearest_expiry": self.nearest_expiry,
             "current_strike": self.current_strike,
-            "current_call_ask": self.current_call_ask,
-            "current_put_ask": self.current_put_ask,
+            "current_call_mark": self.current_call_mark,
+            "current_put_mark": self.current_put_mark,
             "combined_premium": self.combined_premium,
             "short_limit_price": self.short_limit_price,
             "long_limit_price": self.long_limit_price,
@@ -237,14 +237,14 @@ class StraddleEngine:
                 spot = await get_btc_spot_price()
                 self.last_spot_price = spot
                 
-                strike, call_ask, put_ask, expiry = await self.find_same_strike_pair(spot)
+                strike, call_mark, put_mark, expiry = await self.find_same_strike_pair(spot)
                 self.current_strike = strike
-                self.current_call_ask = call_ask
-                self.current_put_ask = put_ask
+                self.current_call_mark = call_mark
+                self.current_put_mark = put_mark
                 self.nearest_expiry = expiry
                 
                 # Calculations
-                self.combined_premium = call_ask + put_ask
+                self.combined_premium = call_mark + put_mark
                 self.short_limit_price = strike + self.combined_premium
                 self.long_limit_price = strike - self.combined_premium
 
@@ -440,7 +440,7 @@ class StraddleEngine:
                             sess.status = "Completed"
                             sess.futures_status = "Closed"
                             # Simulated recovery: close options back at current asks (recovery)
-                            recovery_val = (self.current_call_ask + self.current_put_ask) * float(cfg.get("TRADE_QTY", "0.1"))
+                            recovery_val = (self.current_call_mark + self.current_put_mark) * float(cfg.get("TRADE_QTY", "0.1"))
                             sess.pnl_realized = - (self.combined_premium * float(cfg.get("TRADE_QTY", "0.1"))) + recovery_val
                             
                             wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
