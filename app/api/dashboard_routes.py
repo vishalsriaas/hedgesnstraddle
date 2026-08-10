@@ -46,8 +46,9 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
         "straddle": {
             "state": straddle_engine.state,
             "config": straddle_cfg,
+            "trade_qty": float(straddle_cfg.get("TRADE_QTY", "0.1")),   # explicit field for JS PnL calc
             "active_session": latest_straddle,
-            "live_futures_mark": straddle_engine.last_futures_mark,  # reference for strike ITM/OTM calc
+            "live_futures_mark": straddle_engine.last_futures_mark,
             "live_call_strike": straddle_engine.current_strike,
             "live_put_strike": straddle_engine.current_strike,
             "live_call_mark": straddle_engine.current_call_mark,

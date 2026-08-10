@@ -195,31 +195,40 @@ async function fetchSnapshot() {
             const livePutAsk = data.straddle.live_put_mark || 195.20;
 
             if (activeStraddle) {
-                const qty = parseFloat(data.straddle.trade_qty || 0.1);
-                
-                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike;
-                document.getElementById("call-entry-val").innerText = `$${(activeStraddle.call_ask || 0).toFixed(2)}`;
+                // Use trade_qty from API (actual configured qty), not a hardcoded fallback
+                const qty = parseFloat(data.straddle.trade_qty || activeStraddle.qty || 0.1);
+
+                // === CALL LEG ===
+                const callEntryPrice = activeStraddle.call_ask || 0;   // stored as mark price at entry
+                document.getElementById("call-strike-val").innerText = activeStraddle.call_strike || "-";
+                document.getElementById("call-entry-val").innerText = callEntryPrice > 0 ? `$${callEntryPrice.toFixed(2)}` : "-";
                 document.getElementById("call-ask-val").innerText = `$${liveCallAsk.toFixed(2)}`;
-                
-                const callPnl = (liveCallAsk - (activeStraddle.call_ask || 0)) * qty;
+
+                // Call PnL = (live mark - entry mark) × qty
+                const callPnl = (liveCallAsk - callEntryPrice) * qty;
                 const callPnlEl = document.getElementById("call-pnl-val");
                 callPnlEl.innerText = `${callPnl >= 0 ? '+' : ''}$${callPnl.toFixed(2)}`;
                 callPnlEl.style.color = callPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
 
-                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike;
-                document.getElementById("put-entry-val").innerText = `$${(activeStraddle.put_ask || 0).toFixed(2)}`;
+                // === PUT LEG ===
+                const putEntryPrice = activeStraddle.put_ask || 0;    // stored as mark price at entry
+                document.getElementById("put-strike-val").innerText = activeStraddle.put_strike || "-";
+                document.getElementById("put-entry-val").innerText = putEntryPrice > 0 ? `$${putEntryPrice.toFixed(2)}` : "-";
                 document.getElementById("put-ask-val").innerText = `$${livePutAsk.toFixed(2)}`;
 
-                const putPnl = (livePutAsk - (activeStraddle.put_ask || 0)) * qty;
+                // Put PnL = (live mark - entry mark) × qty
+                const putPnl = (livePutAsk - putEntryPrice) * qty;
                 const putPnlEl = document.getElementById("put-pnl-val");
                 putPnlEl.innerText = `${putPnl >= 0 ? '+' : ''}$${putPnl.toFixed(2)}`;
                 putPnlEl.style.color = putPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
 
-                // Futures PnL calculation
+                // === FUTURES LEG ===
                 let futPnl = 0.0;
                 if (activeStraddle.futures_entry_price) {
+                    // futSide: +1 = long (expecting price to rise), -1 = short (expecting price to fall)
                     const futSide = (activeStraddle.futures_tp_price > activeStraddle.futures_entry_price) ? 1 : -1;
-                    futPnl = (btcMark - activeStraddle.futures_entry_price) * qty * futSide;
+                    // Futures PnL = direction × (current mark - entry) × qty
+                    futPnl = futSide * (btcMark - activeStraddle.futures_entry_price) * qty;
                 }
                 const futPnlEl = document.getElementById("fut-pnl-val");
                 futPnlEl.innerText = `${futPnl >= 0 ? '+' : ''}$${futPnl.toFixed(2)}`;
@@ -228,7 +237,7 @@ async function fetchSnapshot() {
                 document.getElementById("fut-entry-val").innerText = activeStraddle.futures_entry_price ? `$${activeStraddle.futures_entry_price.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '-';
                 document.getElementById("fut-tp-val").innerText = activeStraddle.futures_tp_price ? `$${activeStraddle.futures_tp_price.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '-';
 
-                // Display live net session PnL in top card
+                // === NET SESSION PnL (call + put + futures) ===
                 const netSessionPnl = callPnl + putPnl + futPnl;
                 const sessionPnlEl = document.getElementById("straddle-hero-pnl");
                 sessionPnlEl.innerText = `${netSessionPnl >= 0 ? '+' : ''}$${netSessionPnl.toFixed(2)}`;

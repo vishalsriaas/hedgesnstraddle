@@ -299,14 +299,17 @@ class StraddleEngine:
                 if self.state == "ENTRY_WINDOW" and not self.active_session_id:
                     max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
                     max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
-                    
+
                     premium_ok = (self.combined_premium <= max_premium_limit)
-                    gap_ok = (abs(call_ask - put_ask) <= max_gap_limit)
-                    
+                    # FIX: use call_mark / put_mark (not the old call_ask/put_ask which were renamed)
+                    gap_ok = (abs(call_mark - put_mark) <= max_gap_limit)
+
                     last_traded = cfg.get("LAST_TRADED_EXPIRY", "")
                     already_traded = (expiry != "N/A" and last_traded == expiry)
 
                     if premium_ok and gap_ok and not is_weekend_session and not already_traded:
+                        qty = float(cfg.get("TRADE_QTY", "0.1"))
+
                         # 1. Create a Straddle Session in database
                         new_sess = StraddleSession(
                             expiry_sym=expiry,
@@ -314,9 +317,9 @@ class StraddleEngine:
                             status="Open",
                             btc_entry_spot=spot,
                             call_strike=strike,
-                            call_ask=call_ask,
+                            call_ask=call_mark,   # storing mark price as entry price
                             put_strike=strike,
-                            put_ask=put_ask,
+                            put_ask=put_mark,     # storing mark price as entry price
                             net_straddle_ask=self.combined_premium,
                             pnl_realized=0.0
                         )
@@ -324,7 +327,7 @@ class StraddleEngine:
                         db.commit()
                         db.refresh(new_sess)
                         self.active_session_id = new_sess.id
-                        
+
                         # Save last traded expiry to prevent duplicate session triggers
                         last_traded_cfg = db.query(StraddleConfig).filter(StraddleConfig.key == "LAST_TRADED_EXPIRY").first()
                         if last_traded_cfg:
@@ -332,9 +335,8 @@ class StraddleEngine:
                         else:
                             db.add(StraddleConfig(key="LAST_TRADED_EXPIRY", value=expiry))
                         db.commit()
-                        
-                        # 2. Add simulated BUY fill records for Call and Put options
-                        qty = float(cfg.get("TRADE_QTY", "0.1"))
+
+                        # 2. Add simulated BUY fill records for Call and Put options at mark price
                         call_ord = StraddleTradeOrder(
                             session_id=new_sess.id,
                             symbol=f"BTC-{expiry}-{int(strike)}-C",
@@ -343,7 +345,7 @@ class StraddleEngine:
                             leg_label="CALL",
                             order_type="MARKET",
                             qty=qty,
-                            price=call_ask,
+                            price=call_mark,    # entry at mark price
                             status="FILLED"
                         )
                         put_ord = StraddleTradeOrder(
@@ -354,25 +356,28 @@ class StraddleEngine:
                             leg_label="PUT",
                             order_type="MARKET",
                             qty=qty,
-                            price=put_ask,
+                            price=put_mark,     # entry at mark price
                             status="FILLED"
                         )
                         db.add(call_ord)
                         db.add(put_ord)
                         db.commit()
-                        
+
                         # Deduct premium cost from simulated margin account
                         total_cost = self.combined_premium * qty
                         wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
                         if wallet_item:
                             wallet_item.value = str(float(wallet_item.value) - total_cost)
                         db.commit()
-                        
+
                         # Set limits state active
                         self.is_short_limit_active = True
                         self.is_long_limit_active = True
                         self.state = "LIMITS_PLACED"
-                        logger.info("Straddle entered! Placed OCO Limits: Short @ $%.2f, Long @ $%.2f", self.short_limit_price, self.long_limit_price)
+                        logger.info(
+                            "Straddle entered at mark prices! Call=%.2f Put=%.2f Qty=%.4f | OCO: Short@$%.2f Long@$%.2f",
+                            call_mark, put_mark, qty, self.short_limit_price, self.long_limit_price
+                        )
 
                 # Monitor OCO Limits
                 if self.state == "LIMITS_PLACED" and self.active_session_id:
