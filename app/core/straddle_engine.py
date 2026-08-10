@@ -258,7 +258,10 @@ class StraddleEngine:
                     premium_ok = (self.combined_premium <= max_premium_limit)
                     gap_ok = (abs(call_ask - put_ask) <= max_gap_limit)
                     
-                    if premium_ok and gap_ok and not is_weekend_session:
+                    last_traded = cfg.get("LAST_TRADED_EXPIRY", "")
+                    already_traded = (expiry != "N/A" and last_traded == expiry)
+
+                    if premium_ok and gap_ok and not is_weekend_session and not already_traded:
                         # 1. Create a Straddle Session in database
                         new_sess = StraddleSession(
                             expiry_sym=expiry,
@@ -276,6 +279,14 @@ class StraddleEngine:
                         db.commit()
                         db.refresh(new_sess)
                         self.active_session_id = new_sess.id
+                        
+                        # Save last traded expiry to prevent duplicate session triggers
+                        last_traded_cfg = db.query(StraddleConfig).filter(StraddleConfig.key == "LAST_TRADED_EXPIRY").first()
+                        if last_traded_cfg:
+                            last_traded_cfg.value = expiry
+                        else:
+                            db.add(StraddleConfig(key="LAST_TRADED_EXPIRY", value=expiry))
+                        db.commit()
                         
                         # 2. Add simulated BUY fill records for Call and Put options
                         qty = float(cfg.get("TRADE_QTY", "0.1"))
@@ -320,11 +331,13 @@ class StraddleEngine:
 
                 # Monitor OCO Limits
                 if self.state == "LIMITS_PLACED" and self.active_session_id:
+                    tp_multiplier = float(cfg.get("FUTURES_TP_MULTIPLIER", "1.0"))
+                    
                     # Check if either limit is triggered
                     if spot >= self.short_limit_price and self.is_short_limit_active:
                         # Short Limit triggered: Cancel Long Limit, fill Short futures order
                         self.is_long_limit_active = False
-                        self.target_tp_price = spot - (self.combined_premium * 2)
+                        self.target_tp_price = spot - (self.combined_premium * tp_multiplier)
                         
                         sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
                         if sess:
@@ -339,7 +352,7 @@ class StraddleEngine:
                     elif spot <= self.long_limit_price and self.is_long_limit_active:
                         # Long Limit triggered: Cancel Short Limit, fill Long futures order
                         self.is_short_limit_active = False
-                        self.target_tp_price = spot + (self.combined_premium * 2)
+                        self.target_tp_price = spot + (self.combined_premium * tp_multiplier)
                         
                         sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
                         if sess:
@@ -377,8 +390,8 @@ class StraddleEngine:
                             # Close positions, calculate profits
                             sess.status = "Completed"
                             sess.futures_status = "Closed"
-                            # Calculate simple payout profit
-                            payout = (self.combined_premium * 2) * float(cfg.get("TRADE_QTY", "0.1"))
+                            # Calculate dynamic multiplier payout profit
+                            payout = (self.combined_premium * tp_multiplier) * float(cfg.get("TRADE_QTY", "0.1"))
                             sess.pnl_realized = payout
                             
                             # Credit payout back to virtual margin wallet
