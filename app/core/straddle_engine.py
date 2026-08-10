@@ -118,13 +118,13 @@ class StraddleEngine:
                     expiry_date = parts[1]
                     strike = float(parts[2])
                     side = parts[3]
-                    ask_price = float(t.get("askPrice", 0.0) or t.get("markPrice", 0.0))
+                    mark_price = float(t.get("markPrice", 0.0) or t.get("askPrice", 0.0))
                     parsed_tickers.append({
                         "symbol": sym,
                         "expiry": expiry_date,
                         "strike": strike,
                         "side": side,
-                        "ask": ask_price
+                        "mark": mark_price
                     })
                 except ValueError:
                     continue
@@ -142,14 +142,14 @@ class StraddleEngine:
         strikes = sorted(list(set(item["strike"] for item in nearest_tickers)), key=lambda x: abs(x - spot))
         best_strike = strikes[0] if strikes else base_strike
 
-        # Retrieve Call and Put asks for this strike
+        # Retrieve Call and Put marks for this strike
         best_call = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "C"), None)
         best_put = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "P"), None)
 
-        call_ask = best_call["ask"] if best_call else 180.50
-        put_ask = best_put["ask"] if best_put else 195.20
+        call_mark = best_call["mark"] if best_call else 180.50
+        put_mark = best_put["mark"] if best_put else 195.20
 
-        return best_strike, call_ask, put_ask, nearest
+        return best_strike, call_mark, put_mark, nearest
 
     def get_live_monitoring_snapshot(self, db: Session) -> Dict[str, Any]:
         """Returns dynamic workflow status and limit order computations for the frontend."""
