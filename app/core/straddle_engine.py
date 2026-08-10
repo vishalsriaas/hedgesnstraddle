@@ -367,13 +367,50 @@ class StraddleEngine:
                         )
                         db.add(call_ord)
                         db.add(put_ord)
+
+                        # 3. Add pending OCO Futures Limit Orders immediately after option entry fills
+                        short_limit_ord = StraddleTradeOrder(
+                            session_id=new_sess.id,
+                            symbol="BTC-USDT-FUTURES",
+                            asset_type="FUTURES",
+                            side="SELL",
+                            leg_label="SHORT_LIMIT",
+                            order_type="LIMIT",
+                            qty=qty,
+                            price=self.short_limit_price,
+                            status="PENDING"
+                        )
+                        long_limit_ord = StraddleTradeOrder(
+                            session_id=new_sess.id,
+                            symbol="BTC-USDT-FUTURES",
+                            asset_type="FUTURES",
+                            side="BUY",
+                            leg_label="LONG_LIMIT",
+                            order_type="LIMIT",
+                            qty=qty,
+                            price=self.long_limit_price,
+                            status="PENDING"
+                        )
+                        db.add(short_limit_ord)
+                        db.add(long_limit_ord)
                         db.commit()
 
-                        # Deduct premium cost from simulated margin account
+                        # 4. Deduct option entry premium cost from virtual margin account & record wallet ledger
                         total_cost = self.combined_premium * qty
                         wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                        old_balance = float(wallet_item.value) if wallet_item else 100000.0
+                        new_balance = old_balance - total_cost
                         if wallet_item:
-                            wallet_item.value = str(float(wallet_item.value) - total_cost)
+                            wallet_item.value = str(new_balance)
+
+                        ledger_entry = StraddleWalletLedger(
+                            session_id=new_sess.id,
+                            entry_type="PREMIUM_BUY",
+                            amount=-total_cost,
+                            balance_after=new_balance,
+                            detail=f"Option entry premium cost for Session #{new_sess.id} (Call mark ${call_mark:.2f} + Put mark ${put_mark:.2f}) x {qty} BTC"
+                        )
+                        db.add(ledger_entry)
                         db.commit()
 
                         # Set limits state active
@@ -391,7 +428,7 @@ class StraddleEngine:
                     
                     # Check if either limit is triggered
                     if spot >= self.short_limit_price and self.is_short_limit_active:
-                        # Short Limit triggered: Cancel Long Limit, fill Short futures order
+                        # Short Limit triggered: Fill Short futures order, Cancel Long Limit
                         self.is_long_limit_active = False
                         self.target_tp_price = spot - (self.combined_premium * tp_multiplier)
                         
@@ -400,13 +437,31 @@ class StraddleEngine:
                             sess.futures_entry_price = spot
                             sess.futures_tp_price = self.target_tp_price
                             sess.futures_status = "Open"
+                        
+                        # Update Futures Orders in DB
+                        s_ord = db.query(StraddleTradeOrder).filter(
+                            StraddleTradeOrder.session_id == self.active_session_id,
+                            StraddleTradeOrder.leg_label == "SHORT_LIMIT"
+                        ).first()
+                        if s_ord:
+                            s_ord.status = "FILLED"
+                            s_ord.price = spot
+
+                        l_ord = db.query(StraddleTradeOrder).filter(
+                            StraddleTradeOrder.session_id == self.active_session_id,
+                            StraddleTradeOrder.leg_label == "LONG_LIMIT"
+                        ).first()
+                        if l_ord:
+                            l_ord.status = "CANCELLED"
+                            l_ord.cancel_reason = "OCO_CANCELLED"
+
                         db.commit()
                         
                         self.state = "IN_TRADE"
                         logger.info("OCO Short Limit triggered at $%.2f! Target TP set at $%.2f", spot, self.target_tp_price)
                         
                     elif spot <= self.long_limit_price and self.is_long_limit_active:
-                        # Long Limit triggered: Cancel Short Limit, fill Long futures order
+                        # Long Limit triggered: Fill Long futures order, Cancel Short Limit
                         self.is_short_limit_active = False
                         self.target_tp_price = spot + (self.combined_premium * tp_multiplier)
                         
@@ -415,6 +470,24 @@ class StraddleEngine:
                             sess.futures_entry_price = spot
                             sess.futures_tp_price = self.target_tp_price
                             sess.futures_status = "Open"
+
+                        # Update Futures Orders in DB
+                        l_ord = db.query(StraddleTradeOrder).filter(
+                            StraddleTradeOrder.session_id == self.active_session_id,
+                            StraddleTradeOrder.leg_label == "LONG_LIMIT"
+                        ).first()
+                        if l_ord:
+                            l_ord.status = "FILLED"
+                            l_ord.price = spot
+
+                        s_ord = db.query(StraddleTradeOrder).filter(
+                            StraddleTradeOrder.session_id == self.active_session_id,
+                            StraddleTradeOrder.leg_label == "SHORT_LIMIT"
+                        ).first()
+                        if s_ord:
+                            s_ord.status = "CANCELLED"
+                            s_ord.cancel_reason = "OCO_CANCELLED"
+
                         db.commit()
                         
                         self.state = "IN_TRADE"
@@ -425,6 +498,16 @@ class StraddleEngine:
                         self.is_short_limit_active = False
                         self.is_long_limit_active = False
                         self.state = "RECOVERY"
+
+                        # Expire untriggered pending futures limit orders
+                        pending_orders = db.query(StraddleTradeOrder).filter(
+                            StraddleTradeOrder.session_id == self.active_session_id,
+                            StraddleTradeOrder.status == "PENDING"
+                        ).all()
+                        for p_ord in pending_orders:
+                            p_ord.status = "EXPIRED"
+                        db.commit()
+
                         logger.info("OCO Limits expired at cutoff (%s). Entering Premium Recovery mode.", cutoff_time)
 
                 # Monitor In Trade TP Target
@@ -450,10 +533,21 @@ class StraddleEngine:
                             payout = (self.combined_premium * tp_multiplier) * float(cfg.get("TRADE_QTY", "10"))
                             sess.pnl_realized = payout
                             
-                            # Credit payout back to virtual margin wallet
+                            # Credit payout back to virtual margin wallet & record ledger
                             wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                            old_bal = float(wallet_item.value) if wallet_item else 100000.0
+                            new_bal = old_bal + payout
                             if wallet_item:
-                                wallet_item.value = str(float(wallet_item.value) + payout)
+                                wallet_item.value = str(new_bal)
+
+                            ledger_entry = StraddleWalletLedger(
+                                session_id=sess.id,
+                                entry_type="TRADE_CLOSE",
+                                amount=payout,
+                                balance_after=new_bal,
+                                detail=f"Session #{sess.id} TP target hit - Profit payout credited: ${payout:.2f}"
+                            )
+                            db.add(ledger_entry)
                             
                             db.commit()
                             self.active_session_id = None
@@ -472,9 +566,30 @@ class StraddleEngine:
                             recovery_val = (self.current_call_mark + self.current_put_mark) * float(cfg.get("TRADE_QTY", "10"))
                             sess.pnl_realized = - (self.combined_premium * float(cfg.get("TRADE_QTY", "10"))) + recovery_val
                             
+                            # Cancel any remaining pending limit orders
+                            pending_orders = db.query(StraddleTradeOrder).filter(
+                                StraddleTradeOrder.session_id == self.active_session_id,
+                                StraddleTradeOrder.status == "PENDING"
+                            ).all()
+                            for p_ord in pending_orders:
+                                p_ord.status = "CANCELLED"
+                                p_ord.cancel_reason = "SQUAREOFF"
+
                             wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                            old_bal = float(wallet_item.value) if wallet_item else 100000.0
+                            new_bal = old_bal + recovery_val
                             if wallet_item:
-                                wallet_item.value = str(float(wallet_item.value) + recovery_val)
+                                wallet_item.value = str(new_bal)
+
+                            ledger_entry = StraddleWalletLedger(
+                                session_id=sess.id,
+                                entry_type="TRADE_CLOSE",
+                                amount=recovery_val,
+                                balance_after=new_bal,
+                                detail=f"Session #{sess.id} Squareoff closed - Recovery value credited: ${recovery_val:.2f}"
+                            )
+                            db.add(ledger_entry)
+
                         db.commit()
                         self.active_session_id = None
                         

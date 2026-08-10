@@ -324,7 +324,15 @@ async function fetchSnapshot() {
             // Render Straddle Trade Orders & Fills Table
             const straddleOrdersViewBody = document.getElementById("straddle-orders-view-body");
             if (data.straddle.orders && data.straddle.orders.length > 0) {
-                const ordersHtml = data.straddle.orders.map(o => `
+                const ordersHtml = data.straddle.orders.map(o => {
+                    let statusClass = "badge-info";
+                    if (o.status === "FILLED") statusClass = "badge-success";
+                    else if (o.status === "PENDING") statusClass = "badge-warning";
+                    else if (o.status === "CANCELLED" || o.status === "EXPIRED") statusClass = "badge-danger";
+
+                    const timeStr = o.created_at ? o.created_at.replace("T", " ").slice(0, 19) : "-";
+
+                    return `
                     <tr>
                         <td><b>#${o.id}</b></td>
                         <td>Session #${o.session_id}</td>
@@ -333,27 +341,32 @@ async function fetchSnapshot() {
                         <td><span class="badge badge-info">${o.leg_label || 'OPTION'}</span></td>
                         <td>${o.qty}</td>
                         <td>$${(o.price || 0).toFixed(2)}</td>
-                        <td><span class="badge badge-success">${o.status}</span></td>
+                        <td><span class="badge ${statusClass}">${o.status}</span></td>
+                        <td style="color: var(--text-muted); font-size: 12px;">${timeStr}</td>
                     </tr>
-                `).join("");
+                    `;
+                }).join("");
                 if (straddleOrdersViewBody) straddleOrdersViewBody.innerHTML = ordersHtml;
             } else if (straddleOrdersViewBody) {
-                straddleOrdersViewBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No trade orders submitted yet.</td></tr>';
+                straddleOrdersViewBody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No trade orders submitted yet.</td></tr>';
             }
 
             // Render Straddle Wallet Ledger Table
             const straddleLedgerViewBody = document.getElementById("straddle-ledger-view-body");
             if (data.straddle.ledger && data.straddle.ledger.length > 0) {
-                const ledgerHtml = data.straddle.ledger.map(l => `
+                const ledgerHtml = data.straddle.ledger.map(l => {
+                    const timeStr = l.created_at ? l.created_at.replace("T", " ").slice(0, 19) : "-";
+                    return `
                     <tr>
                         <td><b>#${l.id}</b></td>
                         <td>Session #${l.session_id || '-'}</td>
                         <td><span class="badge badge-info">${l.entry_type}</span></td>
                         <td style="color: ${(l.amount || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">${(l.amount || 0) >= 0 ? '+' : ''}$${(l.amount || 0).toFixed(2)}</td>
                         <td>$${(l.balance_after || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td>${l.description || '-'}</td>
+                        <td style="font-size: 12px;">${l.detail || l.description || '-'}</td>
                     </tr>
-                `).join("");
+                    `;
+                }).join("");
                 if (straddleLedgerViewBody) straddleLedgerViewBody.innerHTML = ledgerHtml;
             } else if (straddleLedgerViewBody) {
                 straddleLedgerViewBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No wallet ledger entries logged.</td></tr>';
