@@ -191,24 +191,69 @@ async function fetchSnapshot() {
                 document.getElementById("timer-sq-left").innerText = "Squareoff Reached";
             }
 
+            const liveCallAsk = data.straddle.live_call_ask || 180.50;
+            const livePutAsk = data.straddle.live_put_ask || 195.20;
+
             if (activeStraddle) {
+                const qty = parseFloat(data.straddle.trade_qty || 0.1);
+                
                 document.getElementById("call-strike-val").innerText = activeStraddle.call_strike;
-                document.getElementById("call-ask-val").innerText = `$${(activeStraddle.call_ask || 0).toFixed(2)}`;
+                document.getElementById("call-entry-val").innerText = `$${(activeStraddle.call_ask || 0).toFixed(2)}`;
+                document.getElementById("call-ask-val").innerText = `$${liveCallAsk.toFixed(2)}`;
                 
+                const callPnl = (liveCallAsk - (activeStraddle.call_ask || 0)) * qty;
+                const callPnlEl = document.getElementById("call-pnl-val");
+                callPnlEl.innerText = `${callPnl >= 0 ? '+' : ''}$${callPnl.toFixed(2)}`;
+                callPnlEl.style.color = callPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
+
                 document.getElementById("put-strike-val").innerText = activeStraddle.put_strike;
-                document.getElementById("put-ask-val").innerText = `$${(activeStraddle.put_ask || 0).toFixed(2)}`;
+                document.getElementById("put-entry-val").innerText = `$${(activeStraddle.put_ask || 0).toFixed(2)}`;
+                document.getElementById("put-ask-val").innerText = `$${livePutAsk.toFixed(2)}`;
 
-                document.getElementById("fut-entry-val").innerText = `$${(activeStraddle.futures_entry_price || btcMark).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-                document.getElementById("fut-tp-val").innerText = `$${(activeStraddle.futures_tp_price || (btcMark + 375)).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                const putPnl = (livePutAsk - (activeStraddle.put_ask || 0)) * qty;
+                const putPnlEl = document.getElementById("put-pnl-val");
+                putPnlEl.innerText = `${putPnl >= 0 ? '+' : ''}$${putPnl.toFixed(2)}`;
+                putPnlEl.style.color = putPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
+
+                // Futures PnL calculation
+                let futPnl = 0.0;
+                if (activeStraddle.futures_entry_price) {
+                    const futSide = (activeStraddle.futures_tp_price > activeStraddle.futures_entry_price) ? 1 : -1;
+                    futPnl = (btcMark - activeStraddle.futures_entry_price) * qty * futSide;
+                }
+                const futPnlEl = document.getElementById("fut-pnl-val");
+                futPnlEl.innerText = `${futPnl >= 0 ? '+' : ''}$${futPnl.toFixed(2)}`;
+                futPnlEl.style.color = futPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
+
+                document.getElementById("fut-entry-val").innerText = activeStraddle.futures_entry_price ? `$${activeStraddle.futures_entry_price.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '-';
+                document.getElementById("fut-tp-val").innerText = activeStraddle.futures_tp_price ? `$${activeStraddle.futures_tp_price.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '-';
+
+                // Display live net session PnL in top card
+                const netSessionPnl = callPnl + putPnl + futPnl;
+                const sessionPnlEl = document.getElementById("straddle-hero-pnl");
+                sessionPnlEl.innerText = `${netSessionPnl >= 0 ? '+' : ''}$${netSessionPnl.toFixed(2)}`;
+                sessionPnlEl.style.color = netSessionPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
+
             } else {
-                document.getElementById("call-strike-val").innerText = data.straddle.live_call_strike || (Math.round(btcSpot / 100) * 100 + 300);
-                document.getElementById("call-ask-val").innerText = `$${(data.straddle.live_call_ask || 180.50).toFixed(2)}`;
-                
-                document.getElementById("put-strike-val").innerText = data.straddle.live_put_strike || (Math.round(btcSpot / 100) * 100 - 300);
-                document.getElementById("put-ask-val").innerText = `$${(data.straddle.live_put_ask || 195.20).toFixed(2)}`;
+                document.getElementById("call-strike-val").innerText = data.straddle.live_call_strike || (Math.round(btcSpot / 100) * 100);
+                document.getElementById("call-entry-val").innerText = "-";
+                document.getElementById("call-ask-val").innerText = `$${liveCallAsk.toFixed(2)}`;
+                document.getElementById("call-pnl-val").innerText = "+$0.00";
+                document.getElementById("call-pnl-val").style.color = "var(--text-muted)";
 
-                document.getElementById("fut-entry-val").innerText = `$${btcMark.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-                document.getElementById("fut-tp-val").innerText = `$${(btcMark + 375).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                document.getElementById("put-strike-val").innerText = data.straddle.live_put_strike || (Math.round(btcSpot / 100) * 100);
+                document.getElementById("put-entry-val").innerText = "-";
+                document.getElementById("put-ask-val").innerText = `$${livePutAsk.toFixed(2)}`;
+                document.getElementById("put-pnl-val").innerText = "+$0.00";
+                document.getElementById("put-pnl-val").style.color = "var(--text-muted)";
+
+                document.getElementById("fut-entry-val").innerText = "-";
+                document.getElementById("fut-tp-val").innerText = "-";
+                document.getElementById("fut-pnl-val").innerText = "+$0.00";
+                document.getElementById("fut-pnl-val").style.color = "var(--text-muted)";
+
+                document.getElementById("straddle-hero-pnl").innerText = "+$0.00";
+                document.getElementById("straddle-hero-pnl").style.color = "var(--accent-emerald)";
             }
             document.getElementById("straddle-hero-wallet").innerText = `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
