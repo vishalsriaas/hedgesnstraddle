@@ -1,6 +1,8 @@
 import asyncio
 import logging
 from datetime import datetime
+import pytz
+ist = pytz.timezone('Asia/Kolkata')
 from typing import Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
@@ -138,7 +140,7 @@ class StraddleEngine:
         max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
         max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
         
-        now_time_str = datetime.now().strftime("%H:%M")
+        now_time_str = datetime.now(ist).strftime("%H:%M")
         
         # Check conditions
         self.cond_time_window_valid = (window_start <= now_time_str <= window_end)
@@ -204,7 +206,7 @@ class StraddleEngine:
                 self.short_limit_price = strike + self.combined_premium
                 self.long_limit_price = strike - self.combined_premium
 
-                now_time_str = datetime.now().strftime("%H:%M")
+                now_time_str = datetime.now(ist).strftime("%H:%M")
                 window_start = cfg.get("WINDOW_START", "18:50")
                 window_end = cfg.get("WINDOW_END", "18:55")
                 sq_end = cfg.get("SQ_END", "19:02")
