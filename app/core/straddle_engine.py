@@ -261,11 +261,14 @@ class StraddleEngine:
                     if premium_ok and gap_ok and not is_weekend_session:
                         # 1. Create a Straddle Session in database
                         new_sess = StraddleSession(
-                            expiry=expiry,
+                            expiry_sym=expiry,
+                            expiry_dt=expiry,
                             status="Open",
                             btc_entry_spot=spot,
                             call_strike=strike,
+                            call_ask=call_ask,
                             put_strike=strike,
+                            put_ask=put_ask,
                             net_straddle_ask=self.combined_premium,
                             pnl_realized=0.0
                         )
@@ -279,7 +282,10 @@ class StraddleEngine:
                         call_ord = StraddleTradeOrder(
                             session_id=new_sess.id,
                             symbol=f"BTC-{expiry}-{int(strike)}-C",
+                            asset_type="OPTION",
                             side="BUY",
+                            leg_label="CALL",
+                            order_type="MARKET",
                             qty=qty,
                             price=call_ask,
                             status="FILLED"
@@ -287,7 +293,10 @@ class StraddleEngine:
                         put_ord = StraddleTradeOrder(
                             session_id=new_sess.id,
                             symbol=f"BTC-{expiry}-{int(strike)}-P",
+                            asset_type="OPTION",
                             side="BUY",
+                            leg_label="PUT",
+                            order_type="MARKET",
                             qty=qty,
                             price=put_ask,
                             status="FILLED"
