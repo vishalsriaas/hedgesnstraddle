@@ -158,6 +158,7 @@ class StraddleEngine:
         self.cond_itm_otm_valid = True  # Inherently true for same strike model
         
         # Check Weekend Skip Rule
+        skip_weekends_enabled = cfg.get("SKIP_WEEKENDS", "1") == "1"
         is_weekend = False
         if self.nearest_expiry != "N/A":
             try:
@@ -166,7 +167,7 @@ class StraddleEngine:
                     is_weekend = True
             except Exception:
                 pass
-        self.cond_weekend_skip = is_weekend
+        self.cond_weekend_skip = is_weekend and skip_weekends_enabled
         
         return {
             "state": self.state,
@@ -234,8 +235,9 @@ class StraddleEngine:
                 sq_end = cfg.get("SQ_END", "19:02")
 
                 # Parse Expiry Weekend check
+                skip_weekends = cfg.get("SKIP_WEEKENDS", "1") == "1"
                 is_weekend_session = False
-                if expiry != "N/A":
+                if expiry != "N/A" and skip_weekends:
                     try:
                         expiry_dt = datetime.strptime(f"20{expiry}", "%Y%m%d")
                         if expiry_dt.weekday() in [5, 6]:

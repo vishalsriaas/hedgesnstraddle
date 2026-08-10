@@ -61,6 +61,7 @@ def init_database():
             "MIN_EXPIRY_HOURS": "0.0",
             "MAX_TOTAL_MARK": "1500.0",
             "MAX_PREMIUM_GAP": "150.0",
+            "SKIP_WEEKENDS": "1",
             "FUTURES_TP_MULTIPLIER": "1.0",
             "SCAN_INTERVAL": "1.0",
             "RETRY_TIMEOUT": "5.0",
