@@ -31,6 +31,9 @@ class StraddleEngine:
         # Calculated OCO limit levels
         self.short_limit_price: float = 64375.70
         self.long_limit_price: float = 63624.30
+        self.is_short_limit_active: bool = False
+        self.is_long_limit_active: bool = False
+        self.target_tp_price: float = 0.0
         
         # Checked conditions status
         self.cond_time_window_valid: bool = False
@@ -38,6 +41,7 @@ class StraddleEngine:
         self.cond_premium_gap_valid: bool = False
         self.cond_same_strike_valid: bool = True
         self.cond_itm_otm_valid: bool = True
+        self.cond_weekend_skip: bool = False
         
         self._task: Optional[asyncio.Task] = None
 
@@ -137,10 +141,13 @@ class StraddleEngine:
         
         window_start = cfg.get("WINDOW_START", "18:50")
         window_end = cfg.get("WINDOW_END", "18:55")
+        futures_entry_cutoff = cfg.get("FUTURES_ENTRY_CUTOFF", "18:56")
+        sq_end = cfg.get("SQ_END", "19:02")
         max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
         max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
         
-        now_time_str = datetime.now(ist).strftime("%H:%M")
+        now_time_full = datetime.now(ist).strftime("%H:%M:%S")
+        now_time_str = now_time_full[:5]
         
         # Check conditions
         self.cond_time_window_valid = (window_start <= now_time_str <= window_end)
@@ -150,9 +157,20 @@ class StraddleEngine:
         # ITM / OTM verification: one must be <= spot, the other >= spot at same strike K
         self.cond_itm_otm_valid = True  # Inherently true for same strike model
         
+        # Check Weekend Skip Rule
+        is_weekend = False
+        if self.nearest_expiry != "N/A":
+            try:
+                expiry_dt = datetime.strptime(f"20{self.nearest_expiry}", "%Y%m%d")
+                if expiry_dt.weekday() in [5, 6]:  # Saturday (5) or Sunday (6)
+                    is_weekend = True
+            except Exception:
+                pass
+        self.cond_weekend_skip = is_weekend
+        
         return {
             "state": self.state,
-            "server_time": now_time_str,
+            "server_time": now_time_full,
             "last_spot_price": self.last_spot_price,
             "nearest_expiry": self.nearest_expiry,
             "current_strike": self.current_strike,
@@ -165,6 +183,8 @@ class StraddleEngine:
             # Constraints
             "window_start": window_start,
             "window_end": window_end,
+            "futures_entry_cutoff": futures_entry_cutoff,
+            "sq_end": sq_end,
             "max_premium_limit": max_premium_limit,
             "max_gap_limit": max_gap_limit,
             
@@ -173,7 +193,8 @@ class StraddleEngine:
             "cond_premium_valid": self.cond_premium_valid,
             "cond_premium_gap_valid": self.cond_premium_gap_valid,
             "cond_same_strike_valid": self.cond_same_strike_valid,
-            "cond_itm_otm_valid": self.cond_itm_otm_valid
+            "cond_itm_otm_valid": self.cond_itm_otm_valid,
+            "cond_weekend_skip": self.cond_weekend_skip
         }
 
     async def run_loop(self):
@@ -209,15 +230,174 @@ class StraddleEngine:
                 now_time_str = datetime.now(ist).strftime("%H:%M")
                 window_start = cfg.get("WINDOW_START", "18:50")
                 window_end = cfg.get("WINDOW_END", "18:55")
+                cutoff_time = cfg.get("FUTURES_ENTRY_CUTOFF", "18:56")
                 sq_end = cfg.get("SQ_END", "19:02")
 
-                # Handle state transitions
+                # Parse Expiry Weekend check
+                is_weekend_session = False
+                if expiry != "N/A":
+                    try:
+                        expiry_dt = datetime.strptime(f"20{expiry}", "%Y%m%d")
+                        if expiry_dt.weekday() in [5, 6]:
+                            is_weekend_session = True
+                    except Exception:
+                        pass
+
+                # Handle state transitions and simulated trade punching
                 if window_start <= now_time_str <= window_end and self.state == "IDLE":
                     self.state = "ENTRY_WINDOW"
                     logger.info("Entering Straddle Entry Window (%s - %s)", window_start, window_end)
 
-                elif now_time_str > sq_end and self.state in ["IN_TRADE", "SQUAREOFF", "ENTRY_WINDOW"]:
+                # Punch straddle entry if all conditions met
+                if self.state == "ENTRY_WINDOW" and not self.active_session_id:
+                    max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "1500.0"))
+                    max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
+                    
+                    premium_ok = (self.combined_premium <= max_premium_limit)
+                    gap_ok = (abs(call_ask - put_ask) <= max_gap_limit)
+                    
+                    if premium_ok and gap_ok and not is_weekend_session:
+                        # 1. Create a Straddle Session in database
+                        new_sess = StraddleSession(
+                            expiry=expiry,
+                            status="Open",
+                            btc_entry_spot=spot,
+                            call_strike=strike,
+                            put_strike=strike,
+                            net_straddle_ask=self.combined_premium,
+                            pnl_realized=0.0
+                        )
+                        db.add(new_sess)
+                        db.commit()
+                        db.refresh(new_sess)
+                        self.active_session_id = new_sess.id
+                        
+                        # 2. Add simulated BUY fill records for Call and Put options
+                        qty = float(cfg.get("TRADE_QTY", "0.1"))
+                        call_ord = StraddleTradeOrder(
+                            session_id=new_sess.id,
+                            symbol=f"BTC-{expiry}-{int(strike)}-C",
+                            side="BUY",
+                            qty=qty,
+                            price=call_ask,
+                            status="FILLED"
+                        )
+                        put_ord = StraddleTradeOrder(
+                            session_id=new_sess.id,
+                            symbol=f"BTC-{expiry}-{int(strike)}-P",
+                            side="BUY",
+                            qty=qty,
+                            price=put_ask,
+                            status="FILLED"
+                        )
+                        db.add(call_ord)
+                        db.add(put_ord)
+                        db.commit()
+                        
+                        # Deduct premium cost from simulated margin account
+                        total_cost = self.combined_premium * qty
+                        wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                        if wallet_item:
+                            wallet_item.value = str(float(wallet_item.value) - total_cost)
+                        db.commit()
+                        
+                        # Set limits state active
+                        self.is_short_limit_active = True
+                        self.is_long_limit_active = True
+                        self.state = "LIMITS_PLACED"
+                        logger.info("Straddle entered! Placed OCO Limits: Short @ $%.2f, Long @ $%.2f", self.short_limit_price, self.long_limit_price)
+
+                # Monitor OCO Limits
+                if self.state == "LIMITS_PLACED" and self.active_session_id:
+                    # Check if either limit is triggered
+                    if spot >= self.short_limit_price and self.is_short_limit_active:
+                        # Short Limit triggered: Cancel Long Limit, fill Short futures order
+                        self.is_long_limit_active = False
+                        self.target_tp_price = spot - (self.combined_premium * 2)
+                        
+                        sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
+                        if sess:
+                            sess.futures_entry_price = spot
+                            sess.futures_tp_price = self.target_tp_price
+                            sess.futures_status = "Open"
+                        db.commit()
+                        
+                        self.state = "IN_TRADE"
+                        logger.info("OCO Short Limit triggered at $%.2f! Target TP set at $%.2f", spot, self.target_tp_price)
+                        
+                    elif spot <= self.long_limit_price and self.is_long_limit_active:
+                        # Long Limit triggered: Cancel Short Limit, fill Long futures order
+                        self.is_short_limit_active = False
+                        self.target_tp_price = spot + (self.combined_premium * 2)
+                        
+                        sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
+                        if sess:
+                            sess.futures_entry_price = spot
+                            sess.futures_tp_price = self.target_tp_price
+                            sess.futures_status = "Open"
+                        db.commit()
+                        
+                        self.state = "IN_TRADE"
+                        logger.info("OCO Long Limit triggered at $%.2f! Target TP set at $%.2f", spot, self.target_tp_price)
+                        
+                    # Check if Cutoff time reached without triggers
+                    elif now_time_str >= cutoff_time:
+                        self.is_short_limit_active = False
+                        self.is_long_limit_active = False
+                        self.state = "RECOVERY"
+                        logger.info("OCO Limits expired at cutoff (%s). Entering Premium Recovery mode.", cutoff_time)
+
+                # Monitor In Trade TP Target
+                if self.state == "IN_TRADE" and self.active_session_id:
+                    sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
+                    if sess and sess.futures_tp_price:
+                        # Verify if Futures TP has been hit
+                        tp_hit = False
+                        if sess.futures_entry_price and sess.futures_tp_price < sess.futures_entry_price:
+                            # Short position: TP hits when spot drops to or below target
+                            if spot <= sess.futures_tp_price:
+                                tp_hit = True
+                        elif sess.futures_entry_price and sess.futures_tp_price > sess.futures_entry_price:
+                            # Long position: TP hits when spot rises to or above target
+                            if spot >= sess.futures_tp_price:
+                                tp_hit = True
+                                
+                        if tp_hit:
+                            # Close positions, calculate profits
+                            sess.status = "Completed"
+                            sess.futures_status = "Closed"
+                            # Calculate simple payout profit
+                            payout = (self.combined_premium * 2) * float(cfg.get("TRADE_QTY", "0.1"))
+                            sess.pnl_realized = payout
+                            
+                            # Credit payout back to virtual margin wallet
+                            wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                            if wallet_item:
+                                wallet_item.value = str(float(wallet_item.value) + payout)
+                            
+                            db.commit()
+                            self.active_session_id = None
+                            self.state = "COMPLETED"
+                            logger.info("Futures TP Target hit at $%.2f! Closed all options.", spot)
+
+                # Hard Squareoff
+                if now_time_str > sq_end and self.state in ["IN_TRADE", "SQUAREOFF", "ENTRY_WINDOW", "LIMITS_PLACED", "RECOVERY"]:
                     logger.info("Straddle Window Closed (%s). Executing squareoff & config flush...", sq_end)
+                    if self.active_session_id:
+                        sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
+                        if sess:
+                            sess.status = "Completed"
+                            sess.futures_status = "Closed"
+                            # Simulated recovery: close options back at current asks (recovery)
+                            recovery_val = (self.current_call_ask + self.current_put_ask) * float(cfg.get("TRADE_QTY", "0.1"))
+                            sess.pnl_realized = - (self.combined_premium * float(cfg.get("TRADE_QTY", "0.1"))) + recovery_val
+                            
+                            wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                            if wallet_item:
+                                wallet_item.value = str(float(wallet_item.value) + recovery_val)
+                        db.commit()
+                        self.active_session_id = None
+                        
                     self.state = "COMPLETED"
                     self.flush_pending_config_on_window_close(db)
                     self.state = "IDLE"

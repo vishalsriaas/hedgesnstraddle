@@ -102,7 +102,8 @@ async function fetchSnapshot() {
             
             // Update Straddle Live Monitor UI
             const monitor = data.straddle.live_monitoring || {};
-            document.getElementById("straddle-live-time").innerText = `Server Time: ${monitor.server_time || 'N/A'}`;
+            const serverTimeStr = monitor.server_time || '00:00:00';
+            document.getElementById("straddle-live-time").innerText = `Server Time: ${serverTimeStr}`;
             
             const timeStatus = document.getElementById("cond-time-status");
             timeStatus.innerText = monitor.cond_time_window_valid ? "✅ Active" : "❌ Inactive";
@@ -116,8 +117,70 @@ async function fetchSnapshot() {
             gapStatus.innerText = monitor.cond_premium_gap_valid ? "✅ Valid" : "❌ Gap Exceeded";
             gapStatus.style.color = monitor.cond_premium_gap_valid ? "var(--accent-emerald)" : "var(--accent-rose)";
 
+            const weekendStatus = document.getElementById("cond-weekend-status");
+            weekendStatus.innerText = monitor.cond_weekend_skip ? "❌ Skip Session (Weekend)" : "✅ Active Session";
+            weekendStatus.style.color = monitor.cond_weekend_skip ? "var(--accent-rose)" : "var(--accent-emerald)";
+
             document.getElementById("straddle-short-limit").innerText = `$${(monitor.short_limit_price || 0.00).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             document.getElementById("straddle-long-limit").innerText = `$${(monitor.long_limit_price || 0.00).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+            // Real-time Countdown Timer Calculations
+            function getSecs(str) {
+                if (!str) return 0;
+                const parts = str.split(":").map(Number);
+                const h = parts[0] || 0;
+                const m = parts[1] || 0;
+                const s = parts[2] || 0;
+                return h * 3600 + m * 60 + s;
+            }
+            
+            const currentSeconds = getSecs(serverTimeStr);
+            
+            function calculateCountdown(targetTimeStr) {
+                if (!targetTimeStr) return "00:00:00";
+                let targetSecs = getSecs(targetTimeStr);
+                let diff = targetSecs - currentSeconds;
+                if (diff < 0) {
+                    diff += 24 * 3600;
+                }
+                const hr = Math.floor(diff / 3600);
+                const mn = Math.floor((diff % 3600) / 60);
+                const sc = diff % 60;
+                return `${String(hr).padStart(2, '0')}:${String(mn).padStart(2, '0')}:${String(sc).padStart(2, '0')}`;
+            }
+
+            const wStart = monitor.window_start;
+            const wEnd = monitor.window_end;
+            const cutoff = monitor.futures_entry_cutoff;
+            const sqEnd = monitor.sq_end;
+
+            // 1. Time To Open
+            if (currentSeconds < getSecs(wStart)) {
+                document.getElementById("timer-to-open").innerText = calculateCountdown(wStart);
+            } else {
+                document.getElementById("timer-to-open").innerText = "Closed / Active";
+            }
+
+            // 2. Window Time Left
+            if (currentSeconds >= getSecs(wStart) && currentSeconds <= getSecs(wEnd)) {
+                document.getElementById("timer-window-left").innerText = calculateCountdown(wEnd);
+            } else {
+                document.getElementById("timer-window-left").innerText = "00:00:00";
+            }
+
+            // 3. Hedge Cutoff Timer
+            if (currentSeconds <= getSecs(cutoff)) {
+                document.getElementById("timer-cutoff-left").innerText = calculateCountdown(cutoff);
+            } else {
+                document.getElementById("timer-cutoff-left").innerText = "Cutoff Reached";
+            }
+
+            // 4. Squareoff Timer
+            if (currentSeconds <= getSecs(sqEnd)) {
+                document.getElementById("timer-sq-left").innerText = calculateCountdown(sqEnd);
+            } else {
+                document.getElementById("timer-sq-left").innerText = "Squareoff Reached";
+            }
 
             if (activeStraddle) {
                 document.getElementById("call-strike-val").innerText = activeStraddle.call_strike;
