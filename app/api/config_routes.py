@@ -58,6 +58,8 @@ def update_straddle_config(
         db.add(audit)
         applied_results.append(field_name)
 
+    # Clear LAST_TRADED_EXPIRY config value to allow immediate re-trade testing
+    db.query(StraddleConfig).filter(StraddleConfig.key == "LAST_TRADED_EXPIRY").delete()
     db.commit()
 
     return {

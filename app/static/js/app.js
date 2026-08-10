@@ -125,23 +125,32 @@ async function fetchSnapshot() {
             document.getElementById("straddle-long-limit").innerText = `$${(monitor.long_limit_price || 0.00).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
 
             // Real-time Countdown Timer Calculations
-            function getSecs(str) {
+            function getSessionRelativeSecs(str) {
                 if (!str) return 0;
                 const parts = str.split(":").map(Number);
                 const h = parts[0] || 0;
                 const m = parts[1] || 0;
                 const s = parts[2] || 0;
-                return h * 3600 + m * 60 + s;
+                const totalSecs = h * 3600 + m * 60 + s;
+                
+                // Expiry Session boundary starts at 13:31:00 IST = 48660 seconds
+                const sessionStartSecs = 13 * 3600 + 31 * 60;
+                
+                if (totalSecs >= sessionStartSecs) {
+                    return totalSecs - sessionStartSecs;
+                } else {
+                    return (totalSecs + 24 * 3600) - sessionStartSecs;
+                }
             }
             
-            const currentSeconds = getSecs(serverTimeStr);
+            const currentRelSecs = getSessionRelativeSecs(serverTimeStr);
             
             function calculateCountdown(targetTimeStr) {
                 if (!targetTimeStr) return "00:00:00";
-                let targetSecs = getSecs(targetTimeStr);
-                let diff = targetSecs - currentSeconds;
+                let targetRelSecs = getSessionRelativeSecs(targetTimeStr);
+                let diff = targetRelSecs - currentRelSecs;
                 if (diff < 0) {
-                    diff += 24 * 3600;
+                    return "00:00:00";
                 }
                 const hr = Math.floor(diff / 3600);
                 const mn = Math.floor((diff % 3600) / 60);
@@ -155,28 +164,28 @@ async function fetchSnapshot() {
             const sqEnd = monitor.sq_end;
 
             // 1. Time To Open
-            if (currentSeconds < getSecs(wStart)) {
+            if (currentRelSecs < getSessionRelativeSecs(wStart)) {
                 document.getElementById("timer-to-open").innerText = calculateCountdown(wStart);
             } else {
                 document.getElementById("timer-to-open").innerText = "Closed / Active";
             }
 
             // 2. Window Time Left
-            if (currentSeconds >= getSecs(wStart) && currentSeconds <= getSecs(wEnd)) {
+            if (currentRelSecs >= getSessionRelativeSecs(wStart) && currentRelSecs <= getSessionRelativeSecs(wEnd)) {
                 document.getElementById("timer-window-left").innerText = calculateCountdown(wEnd);
             } else {
                 document.getElementById("timer-window-left").innerText = "00:00:00";
             }
 
             // 3. Hedge Cutoff Timer
-            if (currentSeconds <= getSecs(cutoff)) {
+            if (currentRelSecs <= getSessionRelativeSecs(cutoff)) {
                 document.getElementById("timer-cutoff-left").innerText = calculateCountdown(cutoff);
             } else {
                 document.getElementById("timer-cutoff-left").innerText = "Cutoff Reached";
             }
 
             // 4. Squareoff Timer
-            if (currentSeconds <= getSecs(sqEnd)) {
+            if (currentRelSecs <= getSessionRelativeSecs(sqEnd)) {
                 document.getElementById("timer-sq-left").innerText = calculateCountdown(sqEnd);
             } else {
                 document.getElementById("timer-sq-left").innerText = "Squareoff Reached";
