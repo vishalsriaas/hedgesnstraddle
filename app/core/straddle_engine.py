@@ -316,7 +316,7 @@ class StraddleEngine:
                     if premium_ok and gap_ok and not is_weekend_session and not already_traded:
                         qty = float(cfg.get("TRADE_QTY", "10"))
 
-                        now_ist = datetime.now(ist)
+                        now_ist = datetime.now(ist).replace(tzinfo=None)
 
                         # 1. Create a Straddle Session in database
                         new_sess = StraddleSession(
