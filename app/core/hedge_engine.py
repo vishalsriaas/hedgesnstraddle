@@ -27,6 +27,14 @@ class HedgeEngine:
         """Fetch dynamic Hedge Strategy Config parameters by role name ('1st Trader' vs '2nd Trader')."""
         return db.query(HedgeStrategyConfig).filter(HedgeStrategyConfig.strategy_name == role_name).first()
 
+    def validate_option_spend(self, option_ask: float, qty: float, max_option_spend: float) -> bool:
+        """Enforces MAX_OPTION_SPEND limit: reject option purchase if (ask * qty) > MAX_OPTION_SPEND."""
+        total_cost = option_ask * qty
+        if total_cost > max_option_spend:
+            logger.warning("Option spend $%.2f exceeds limit $%.2f - REJECTED", total_cost, max_option_spend)
+            return False
+        return True
+
     def flush_pending_config_on_session_close(self, db: Session):
         pending_items = db.query(PendingConfig).filter(PendingConfig.config_type == "HEDGE").all()
         if not pending_items:
@@ -94,14 +102,6 @@ class HedgeEngine:
 
                     logger.debug("Hedge Role [%s] limits: Window %s-%s, ForceClose %s, Qty %.2f, MaxPrem $%.1f, MaxTV $%.1f, MaxSpend $%.1f",
                                  self.active_role, trade_window_open, trade_window_close, force_close, contract_qty, max_premium, max_time_val, max_option_spend)
-
-    def validate_option_spend(self, option_ask: float, qty: float, max_option_spend: float) -> bool:
-        """Enforces MAX_OPTION_SPEND limit: reject option purchase if (ask * qty) > MAX_OPTION_SPEND."""
-        total_cost = option_ask * qty
-        if total_cost > max_option_spend:
-            logger.warning("Option spend $%.2f exceeds limit $%.2f - REJECTED", total_cost, max_option_spend)
-            return False
-        return True
 
                 if self.state == "COMPLETED":
                     self.flush_pending_config_on_session_close(db)
