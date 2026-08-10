@@ -316,6 +316,8 @@ class StraddleEngine:
                     if premium_ok and gap_ok and not is_weekend_session and not already_traded:
                         qty = float(cfg.get("TRADE_QTY", "10"))
 
+                        now_ist = datetime.now(ist)
+
                         # 1. Create a Straddle Session in database
                         new_sess = StraddleSession(
                             expiry_sym=expiry,
@@ -327,7 +329,8 @@ class StraddleEngine:
                             put_strike=strike,
                             put_ask=put_mark,     # storing mark price as entry price
                             net_straddle_ask=self.combined_premium,
-                            pnl_realized=0.0
+                            pnl_realized=0.0,
+                            created_at=now_ist
                         )
                         db.add(new_sess)
                         db.commit()
@@ -352,7 +355,8 @@ class StraddleEngine:
                             order_type="MARKET",
                             qty=qty,
                             price=call_mark,    # entry at mark price
-                            status="FILLED"
+                            status="FILLED",
+                            created_at=now_ist
                         )
                         put_ord = StraddleTradeOrder(
                             session_id=new_sess.id,
@@ -363,7 +367,8 @@ class StraddleEngine:
                             order_type="MARKET",
                             qty=qty,
                             price=put_mark,     # entry at mark price
-                            status="FILLED"
+                            status="FILLED",
+                            created_at=now_ist
                         )
                         db.add(call_ord)
                         db.add(put_ord)
@@ -378,7 +383,8 @@ class StraddleEngine:
                             order_type="LIMIT",
                             qty=qty,
                             price=self.short_limit_price,
-                            status="PENDING"
+                            status="PENDING",
+                            created_at=now_ist
                         )
                         long_limit_ord = StraddleTradeOrder(
                             session_id=new_sess.id,
@@ -389,7 +395,8 @@ class StraddleEngine:
                             order_type="LIMIT",
                             qty=qty,
                             price=self.long_limit_price,
-                            status="PENDING"
+                            status="PENDING",
+                            created_at=now_ist
                         )
                         db.add(short_limit_ord)
                         db.add(long_limit_ord)
@@ -408,7 +415,8 @@ class StraddleEngine:
                             entry_type="PREMIUM_BUY",
                             amount=-total_cost,
                             balance_after=new_balance,
-                            detail=f"Option entry premium cost for Session #{new_sess.id} (Call mark ${call_mark:.2f} + Put mark ${put_mark:.2f}) x {qty} BTC"
+                            detail=f"Option entry premium cost for Session #{new_sess.id} (Call mark ${call_mark:.2f} + Put mark ${put_mark:.2f}) x {qty} BTC",
+                            created_at=now_ist
                         )
                         db.add(ledger_entry)
                         db.commit()

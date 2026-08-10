@@ -321,6 +321,35 @@ async function fetchSnapshot() {
                 if (hedgeViewBody) hedgeViewBody.innerHTML = hedgeRowsHtml;
             }
 
+function formatDisplayTime(dtStr) {
+    if (!dtStr) return '-';
+    try {
+        let s = String(dtStr);
+        if (!s.includes("+") && !s.endsWith("Z") && s.includes("T")) {
+            s += "Z";
+        }
+        const d = new Date(s);
+        if (isNaN(d.getTime())) return dtStr.replace("T", " ").slice(0, 19);
+
+        const opts = {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false
+        };
+        const parts = new Intl.DateTimeFormat("en-GB", opts).formatToParts(d);
+        const map = {};
+        parts.forEach(p => map[p.type] = p.value);
+        return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`;
+    } catch (e) {
+        return dtStr.replace("T", " ").slice(0, 19);
+    }
+}
+
             // Render Straddle Trade Orders & Fills Table
             const straddleOrdersViewBody = document.getElementById("straddle-orders-view-body");
             if (data.straddle.orders && data.straddle.orders.length > 0) {
@@ -330,7 +359,7 @@ async function fetchSnapshot() {
                     else if (o.status === "PENDING") statusClass = "badge-warning";
                     else if (o.status === "CANCELLED" || o.status === "EXPIRED") statusClass = "badge-danger";
 
-                    const timeStr = o.created_at ? o.created_at.replace("T", " ").slice(0, 19) : "-";
+                    const timeStr = formatDisplayTime(o.created_at);
 
                     return `
                     <tr>
@@ -355,7 +384,7 @@ async function fetchSnapshot() {
             const straddleLedgerViewBody = document.getElementById("straddle-ledger-view-body");
             if (data.straddle.ledger && data.straddle.ledger.length > 0) {
                 const ledgerHtml = data.straddle.ledger.map(l => {
-                    const timeStr = l.created_at ? l.created_at.replace("T", " ").slice(0, 19) : "-";
+                    const timeStr = formatDisplayTime(l.created_at);
                     return `
                     <tr>
                         <td><b>#${l.id}</b></td>
