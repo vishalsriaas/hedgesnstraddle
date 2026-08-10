@@ -97,7 +97,7 @@ async function fetchSnapshot() {
             document.getElementById("straddle-hero-spot").innerText = `$${(activeStraddle ? (activeStraddle.btc_entry_spot || btcSpot) : btcSpot).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
             document.getElementById("straddle-hero-pnl").innerText = `${(activeStraddle ? (activeStraddle.pnl_realized || 0) : 0) >= 0 ? '+' : ''}$${(activeStraddle ? (activeStraddle.pnl_realized || 0) : 0).toFixed(2)}`;
             
-            const liveNetPrem = (data.straddle.live_call_ask || 180.50) + (data.straddle.live_put_ask || 195.20);
+            const liveNetPrem = (data.straddle.live_call_mark || 180.50) + (data.straddle.live_put_mark || 195.20);
             document.getElementById("straddle-hero-premium").innerText = `$${(activeStraddle ? (activeStraddle.net_straddle_ask || liveNetPrem) : liveNetPrem).toFixed(2)}`;
             
             // Update Straddle Live Monitor UI
@@ -191,8 +191,8 @@ async function fetchSnapshot() {
                 document.getElementById("timer-sq-left").innerText = "Squareoff Reached";
             }
 
-            const liveCallAsk = data.straddle.live_call_ask || 180.50;
-            const livePutAsk = data.straddle.live_put_ask || 195.20;
+            const liveCallAsk = data.straddle.live_call_mark || 180.50;
+            const livePutAsk = data.straddle.live_put_mark || 195.20;
 
             if (activeStraddle) {
                 const qty = parseFloat(data.straddle.trade_qty || 0.1);
