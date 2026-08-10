@@ -14,6 +14,22 @@ from app.core.binance_client import get_btc_spot_price, get_btc_futures_mark_pri
 
 logger = logging.getLogger("hedgesnstraddle.straddle_engine")
 
+def get_session_relative_minutes(time_str: str) -> int:
+    try:
+        parts = time_str.split(":")
+        h = int(parts[0])
+        m = int(parts[1])
+        total_mins = h * 60 + m
+        # Expiry Session boundary starts at 13:31 IST
+        session_start_mins = 13 * 60 + 31
+        
+        if total_mins >= session_start_mins:
+            return total_mins - session_start_mins
+        else:
+            return (total_mins + 24 * 60) - session_start_mins
+    except Exception:
+        return 0
+
 class StraddleEngine:
     def __init__(self):
         self.is_running = False
@@ -149,8 +165,12 @@ class StraddleEngine:
         now_time_full = datetime.now(ist).strftime("%H:%M:%S")
         now_time_str = now_time_full[:5]
         
+        now_rel = get_session_relative_minutes(now_time_str)
+        w_start_rel = get_session_relative_minutes(window_start)
+        w_end_rel = get_session_relative_minutes(window_end)
+        
         # Check conditions
-        self.cond_time_window_valid = (window_start <= now_time_str <= window_end)
+        self.cond_time_window_valid = (w_start_rel <= now_rel <= w_end_rel)
         self.cond_premium_valid = (self.combined_premium <= max_premium_limit)
         self.cond_premium_gap_valid = (abs(self.current_call_ask - self.current_put_ask) <= max_gap_limit)
         
@@ -229,10 +249,17 @@ class StraddleEngine:
                 self.long_limit_price = strike - self.combined_premium
 
                 now_time_str = datetime.now(ist).strftime("%H:%M")
+                now_rel = get_session_relative_minutes(now_time_str)
+                
                 window_start = cfg.get("WINDOW_START", "18:50")
                 window_end = cfg.get("WINDOW_END", "18:55")
                 cutoff_time = cfg.get("FUTURES_ENTRY_CUTOFF", "18:56")
                 sq_end = cfg.get("SQ_END", "19:02")
+                
+                w_start_rel = get_session_relative_minutes(window_start)
+                w_end_rel = get_session_relative_minutes(window_end)
+                cutoff_rel = get_session_relative_minutes(cutoff_time)
+                sq_end_rel = get_session_relative_minutes(sq_end)
 
                 # Parse Expiry Weekend check
                 skip_weekends = cfg.get("SKIP_WEEKENDS", "1") == "1"
@@ -246,7 +273,7 @@ class StraddleEngine:
                         pass
 
                 # Handle state transitions and simulated trade punching
-                if window_start <= now_time_str <= window_end and self.state in ["IDLE", "SQUAREOFF", "COMPLETED"]:
+                if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE", "SQUAREOFF", "COMPLETED"]:
                     self.state = "ENTRY_WINDOW"
                     logger.info("Entering Straddle Entry Window (%s - %s)", window_start, window_end)
 
@@ -365,7 +392,7 @@ class StraddleEngine:
                         logger.info("OCO Long Limit triggered at $%.2f! Target TP set at $%.2f", spot, self.target_tp_price)
                         
                     # Check if Cutoff time reached without triggers
-                    elif now_time_str >= cutoff_time:
+                    elif now_rel >= cutoff_rel:
                         self.is_short_limit_active = False
                         self.is_long_limit_active = False
                         self.state = "RECOVERY"
@@ -405,7 +432,7 @@ class StraddleEngine:
                             logger.info("Futures TP Target hit at $%.2f! Closed all options.", spot)
 
                 # Hard Squareoff
-                if now_time_str > sq_end and self.state in ["IN_TRADE", "SQUAREOFF", "ENTRY_WINDOW", "LIMITS_PLACED", "RECOVERY"]:
+                if now_rel >= sq_end_rel and self.state in ["IN_TRADE", "SQUAREOFF", "ENTRY_WINDOW", "LIMITS_PLACED", "RECOVERY"]:
                     logger.info("Straddle Window Closed (%s). Executing squareoff & config flush...", sq_end)
                     if self.active_session_id:
                         sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
