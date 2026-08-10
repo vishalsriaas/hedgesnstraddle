@@ -244,7 +244,7 @@ class StraddleEngine:
                         pass
 
                 # Handle state transitions and simulated trade punching
-                if window_start <= now_time_str <= window_end and self.state == "IDLE":
+                if window_start <= now_time_str <= window_end and self.state in ["IDLE", "SQUAREOFF", "COMPLETED"]:
                     self.state = "ENTRY_WINDOW"
                     logger.info("Entering Straddle Entry Window (%s - %s)", window_start, window_end)
 
