@@ -37,7 +37,8 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
     # Calculate Mark-to-Market Total Wallet Valuation (Broker Standard Equity Formula)
     open_positions_val = 0.0
     if straddle_engine.active_session_id:
-        qty = float(straddle_cfg.get("TRADE_QTY", "10"))
+        active_ord = db.query(StraddleTradeOrder).filter(StraddleTradeOrder.session_id == straddle_engine.active_session_id).first()
+        qty = active_ord.qty if active_ord else float(straddle_cfg.get("TRADE_QTY", "10"))
         # 1. Option legs current mark valuation
         open_positions_val += (straddle_engine.current_call_mark + straddle_engine.current_put_mark) * qty
         

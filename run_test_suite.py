@@ -89,8 +89,8 @@ def run_suite():
     test_straddle_payload = {
         "WINDOW_START": "18:50",
         "WINDOW_END": "18:55",
-        "TRADE_QTY": "0.25",
-        "FUTURES_TP_MULTIPLIER": "1.2"
+        "TRADE_QTY": "10",
+        "FUTURES_TP_MULTIPLIER": "2"
     }
     status, update_res = make_req(f"{BASE_URL}/api/v1/config/straddle", method="POST", data=test_straddle_payload, headers=headers)
     status_read, read_res = make_req(f"{BASE_URL}/api/v1/config/straddle", headers=headers)
