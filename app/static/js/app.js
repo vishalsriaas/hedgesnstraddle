@@ -374,6 +374,12 @@ const STRADDLE_FIELDS = [
 ];
 
 async function loadStraddleConfig() {
+    // System defaults — shown as placeholder; field stays empty when value matches default
+    const STRADDLE_DEFAULTS = {
+        "TRADE_QTY": "10",
+        "FUTURES_TP_MULTIPLIER": "2"
+    };
+
     try {
         const res = await fetch("/api/v1/config/straddle", {
             headers: { "Authorization": `Bearer ${authToken}` }
@@ -382,7 +388,14 @@ async function loadStraddleConfig() {
             const data = await res.json();
             for (let [k, v] of Object.entries(data.active)) {
                 const input = document.getElementById(`cfg_straddle_${k}`);
-                if (input) input.value = v;
+                if (input) {
+                    // Leave blank (show placeholder) when value is the system default
+                    if (STRADDLE_DEFAULTS[k] && v === STRADDLE_DEFAULTS[k]) {
+                        input.value = "";
+                    } else {
+                        input.value = v;
+                    }
+                }
             }
 
             if (Object.keys(data.pending).length > 0) {
@@ -398,10 +411,21 @@ async function loadStraddleConfig() {
 
 async function saveStraddleConfig(e) {
     e.preventDefault();
+
+    // System defaults used when field is left blank
+    const STRADDLE_DEFAULTS = {
+        "TRADE_QTY": "10",
+        "FUTURES_TP_MULTIPLIER": "2"
+    };
+
     const payload = {};
     STRADDLE_FIELDS.forEach(k => {
         const input = document.getElementById(`cfg_straddle_${k}`);
-        if (input) payload[k] = input.value;
+        if (input) {
+            // If blank, use system default; otherwise use user value
+            const val = input.value.trim();
+            payload[k] = (val === "" && STRADDLE_DEFAULTS[k]) ? STRADDLE_DEFAULTS[k] : val;
+        }
     });
 
     try {

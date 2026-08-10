@@ -420,7 +420,8 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label>BTC Quantity Per Leg</label>
-                            <input type="text" id="cfg_straddle_TRADE_QTY" value="0.1">
+                            <input type="text" id="cfg_straddle_TRADE_QTY" placeholder="10" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 10 BTC per leg. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Max Total Mark Premium ($)</label>
@@ -439,7 +440,8 @@
                         </div>
                         <div class="form-group">
                             <label>Futures Take Profit Multiplier</label>
-                            <input type="text" id="cfg_straddle_FUTURES_TP_MULTIPLIER" value="1.0">
+                            <input type="text" id="cfg_straddle_FUTURES_TP_MULTIPLIER" placeholder="2" autocomplete="off">
+                            <small style="color:var(--text-muted);font-size:11px;">Default: 2× combined premium. Leave blank to use default.</small>
                         </div>
                         <div class="form-group">
                             <label>Futures Leverage</label>

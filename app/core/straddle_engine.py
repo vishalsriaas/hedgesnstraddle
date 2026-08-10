@@ -308,7 +308,7 @@ class StraddleEngine:
                     already_traded = (expiry != "N/A" and last_traded == expiry)
 
                     if premium_ok and gap_ok and not is_weekend_session and not already_traded:
-                        qty = float(cfg.get("TRADE_QTY", "0.1"))
+                        qty = float(cfg.get("TRADE_QTY", "10"))
 
                         # 1. Create a Straddle Session in database
                         new_sess = StraddleSession(
@@ -381,7 +381,7 @@ class StraddleEngine:
 
                 # Monitor OCO Limits
                 if self.state == "LIMITS_PLACED" and self.active_session_id:
-                    tp_multiplier = float(cfg.get("FUTURES_TP_MULTIPLIER", "1.0"))
+                    tp_multiplier = float(cfg.get("FUTURES_TP_MULTIPLIER", "2"))
                     
                     # Check if either limit is triggered
                     if spot >= self.short_limit_price and self.is_short_limit_active:
@@ -441,7 +441,7 @@ class StraddleEngine:
                             sess.status = "Completed"
                             sess.futures_status = "Closed"
                             # Calculate dynamic multiplier payout profit
-                            payout = (self.combined_premium * tp_multiplier) * float(cfg.get("TRADE_QTY", "0.1"))
+                            payout = (self.combined_premium * tp_multiplier) * float(cfg.get("TRADE_QTY", "10"))
                             sess.pnl_realized = payout
                             
                             # Credit payout back to virtual margin wallet
@@ -463,8 +463,8 @@ class StraddleEngine:
                             sess.status = "Completed"
                             sess.futures_status = "Closed"
                             # Simulated recovery: close options back at current asks (recovery)
-                            recovery_val = (self.current_call_mark + self.current_put_mark) * float(cfg.get("TRADE_QTY", "0.1"))
-                            sess.pnl_realized = - (self.combined_premium * float(cfg.get("TRADE_QTY", "0.1"))) + recovery_val
+                            recovery_val = (self.current_call_mark + self.current_put_mark) * float(cfg.get("TRADE_QTY", "10"))
+                            sess.pnl_realized = - (self.combined_premium * float(cfg.get("TRADE_QTY", "10"))) + recovery_val
                             
                             wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
                             if wallet_item:
