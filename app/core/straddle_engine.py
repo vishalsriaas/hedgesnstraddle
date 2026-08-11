@@ -501,7 +501,7 @@ class StraddleEngine:
                         self.state = "IN_TRADE"
                         logger.info("OCO Long Limit triggered at $%.2f! Target TP set at $%.2f", spot, self.target_tp_price)
                         
-                    # Check if Cutoff time reached without triggers
+                    # Check if Futures Cutoff time reached without triggers -> Enter RECOVERY mode
                     elif now_rel >= cutoff_rel:
                         self.is_short_limit_active = False
                         self.is_long_limit_active = False
@@ -514,15 +514,83 @@ class StraddleEngine:
                         ).all()
                         for p_ord in pending_orders:
                             p_ord.status = "EXPIRED"
+                            p_ord.cancel_reason = "FUTURES_CUTOFF_REACHED"
                         db.commit()
 
-                        logger.info("OCO Limits expired at cutoff (%s). Entering Premium Recovery mode.", cutoff_time)
+                        logger.info("Futures Cutoff (%s) reached. Pending limit orders expired. Options Recovery Window active.", cutoff_time)
 
-                # Monitor In Trade TP Target
+                # Scenario 1 (Recovery Window Check): 80% Premium Recovery Target Check
+                if self.state == "RECOVERY" and self.active_session_id:
+                    sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
+                    if sess and sess.status == "Open":
+                        qty = float(cfg.get("TRADE_QTY", "10"))
+                        now_ist = datetime.now(ist).replace(tzinfo=None)
+                        entry_combined = sess.call_ask + sess.put_ask
+                        live_combined = self.current_call_mark + self.current_put_mark
+                        recovery_target_80 = 0.80 * entry_combined
+
+                        # If combined premium recovers to >= 80% of entry premium, sell both options immediately
+                        if live_combined >= recovery_target_80 and live_combined > 0:
+                            logger.info("Session #%d: 80%% Premium Recovery Target hit ($%.2f >= $%.2f). Selling options...", sess.id, live_combined, recovery_target_80)
+                            
+                            call_sell = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol=f"BTC-{sess.expiry_sym}-{int(sess.call_strike)}-C",
+                                asset_type="OPTION",
+                                side="SELL",
+                                leg_label="CALL_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=self.current_call_mark,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            put_sell = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol=f"BTC-{sess.expiry_sym}-{int(sess.put_strike)}-P",
+                                asset_type="OPTION",
+                                side="SELL",
+                                leg_label="PUT_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=self.current_put_mark,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            db.add(call_sell)
+                            db.add(put_sell)
+
+                            recovery_proceeds = live_combined * qty
+                            wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
+                            old_bal = float(wallet_item.value) if wallet_item else 100000.0
+                            new_bal = old_bal + recovery_proceeds
+                            if wallet_item:
+                                wallet_item.value = str(new_bal)
+
+                            ledger_entry = StraddleWalletLedger(
+                                session_id=sess.id,
+                                entry_type="TRADE_CLOSE",
+                                amount=recovery_proceeds,
+                                balance_after=new_bal,
+                                detail=f"Session #{sess.id} 80% Recovery Target hit ($%.2f >= 80% of entry $%.2f) - Sold Call & Put options." % (live_combined, entry_combined),
+                                created_at=now_ist
+                            )
+                            db.add(ledger_entry)
+
+                            sess.status = "Completed"
+                            sess.pnl_realized = (live_combined - entry_combined) * qty
+                            db.commit()
+
+                            self.active_session_id = None
+                            self.state = "COMPLETED"
+                            self.current_strike = 0.0
+                            self.current_call_mark = 0.0
+                            self.current_put_mark = 0.0
+
+                # Scenario 2 (In Trade Check): Monitor Futures Take Profit Target
                 if self.state == "IN_TRADE" and self.active_session_id:
                     sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
                     if sess and sess.futures_tp_price:
-                        # Verify if Futures TP has been hit
                         tp_hit = False
                         if sess.futures_entry_price and sess.futures_tp_price < sess.futures_entry_price:
                             # Short position: TP hits when spot drops to or below target
@@ -534,14 +602,55 @@ class StraddleEngine:
                                 tp_hit = True
                                 
                         if tp_hit:
-                            # Close positions, calculate profits
+                            qty = float(cfg.get("TRADE_QTY", "10"))
+                            now_ist = datetime.now(ist).replace(tzinfo=None)
+                            payout = (self.combined_premium * tp_multiplier) * qty
+                            
+                            # Add SELL exit orders for Call, Put, and Futures
+                            call_sell = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol=f"BTC-{sess.expiry_sym}-{int(sess.call_strike)}-C",
+                                asset_type="OPTION",
+                                side="SELL",
+                                leg_label="CALL_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=self.current_call_mark,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            put_sell = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol=f"BTC-{sess.expiry_sym}-{int(sess.put_strike)}-P",
+                                asset_type="OPTION",
+                                side="SELL",
+                                leg_label="PUT_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=self.current_put_mark,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            fut_close = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol="BTC-USDT-FUTURES",
+                                asset_type="FUTURES",
+                                side="SELL" if sess.futures_tp_price > sess.futures_entry_price else "BUY",
+                                leg_label="FUTURES_TP_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=spot,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            db.add(call_sell)
+                            db.add(put_sell)
+                            db.add(fut_close)
+
                             sess.status = "Completed"
                             sess.futures_status = "Closed"
-                            # Calculate dynamic multiplier payout profit
-                            payout = (self.combined_premium * tp_multiplier) * float(cfg.get("TRADE_QTY", "10"))
                             sess.pnl_realized = payout
                             
-                            # Credit payout back to virtual margin wallet & record ledger
                             wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
                             old_bal = float(wallet_item.value) if wallet_item else 100000.0
                             new_bal = old_bal + payout
@@ -553,53 +662,112 @@ class StraddleEngine:
                                 entry_type="TRADE_CLOSE",
                                 amount=payout,
                                 balance_after=new_bal,
-                                detail=f"Session #{sess.id} TP target hit - Profit payout credited: ${payout:.2f}"
+                                detail=f"Session #{sess.id} Futures TP target hit at ${spot:.2f} - Closed Futures & Options.",
+                                created_at=now_ist
                             )
                             db.add(ledger_entry)
-                            
                             db.commit()
+
                             self.active_session_id = None
                             self.state = "COMPLETED"
-                            logger.info("Futures TP Target hit at $%.2f! Closed all options.", spot)
+                            self.current_strike = 0.0
+                            self.current_call_mark = 0.0
+                            self.current_put_mark = 0.0
+                            logger.info("Futures TP Target hit at $%.2f! Closed all positions.", spot)
 
-                # Hard Squareoff
+                # Hard Squareoff at 12:30 PM (Universal Cutoff for both Scenario 1 & 2)
                 if now_rel >= sq_end_rel and self.state in ["IN_TRADE", "SQUAREOFF", "ENTRY_WINDOW", "LIMITS_PLACED", "RECOVERY"]:
-                    logger.info("Straddle Window Closed (%s). Executing squareoff & config flush...", sq_end)
+                    logger.info("Hard Squareoff Time (%s) reached. Force closing all open positions...", sq_end)
                     if self.active_session_id:
                         sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
-                        if sess:
-                            sess.status = "Completed"
-                            sess.futures_status = "Closed"
-                            # Simulated recovery: close options back at current asks (recovery)
-                            recovery_val = (self.current_call_mark + self.current_put_mark) * float(cfg.get("TRADE_QTY", "10"))
-                            sess.pnl_realized = - (self.combined_premium * float(cfg.get("TRADE_QTY", "10"))) + recovery_val
+                        if sess and sess.status == "Open":
+                            qty = float(cfg.get("TRADE_QTY", "10"))
+                            now_ist = datetime.now(ist).replace(tzinfo=None)
                             
-                            # Cancel any remaining pending limit orders
+                            # 1. Record SELL exit trade orders for Call & Put options
+                            call_sell = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol=f"BTC-{sess.expiry_sym}-{int(sess.call_strike)}-C",
+                                asset_type="OPTION",
+                                side="SELL",
+                                leg_label="CALL_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=self.current_call_mark,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            put_sell = StraddleTradeOrder(
+                                session_id=sess.id,
+                                symbol=f"BTC-{sess.expiry_sym}-{int(sess.put_strike)}-P",
+                                asset_type="OPTION",
+                                side="SELL",
+                                leg_label="PUT_EXIT",
+                                order_type="MARKET",
+                                qty=qty,
+                                price=self.current_put_mark,
+                                status="FILLED",
+                                created_at=now_ist
+                            )
+                            db.add(call_sell)
+                            db.add(put_sell)
+
+                            # 2. If futures position was active, close futures position & record order
+                            fut_realized = 0.0
+                            if sess.futures_status == "Open" and sess.futures_entry_price:
+                                fut_side_dir = 1 if (sess.futures_tp_price > sess.futures_entry_price) else -1
+                                fut_realized = fut_side_dir * (spot - sess.futures_entry_price) * qty
+                                fut_close = StraddleTradeOrder(
+                                    session_id=sess.id,
+                                    symbol="BTC-USDT-FUTURES",
+                                    asset_type="FUTURES",
+                                    side="SELL" if fut_side_dir == 1 else "BUY",
+                                    leg_label="FUTURES_SQ_EXIT",
+                                    order_type="MARKET",
+                                    qty=qty,
+                                    price=spot,
+                                    status="FILLED",
+                                    created_at=now_ist
+                                )
+                                db.add(fut_close)
+
+                            # 3. Cancel any untriggered pending limit orders
                             pending_orders = db.query(StraddleTradeOrder).filter(
                                 StraddleTradeOrder.session_id == self.active_session_id,
                                 StraddleTradeOrder.status == "PENDING"
                             ).all()
                             for p_ord in pending_orders:
                                 p_ord.status = "CANCELLED"
-                                p_ord.cancel_reason = "SQUAREOFF"
+                                p_ord.cancel_reason = "HARD_SQUAREOFF"
+
+                            option_recovery = (self.current_call_mark + self.current_put_mark) * qty
+                            total_close_credit = option_recovery + fut_realized
 
                             wallet_item = db.query(StraddleConfig).filter(StraddleConfig.key == "PAPER_WALLET_USDT").first()
                             old_bal = float(wallet_item.value) if wallet_item else 100000.0
-                            new_bal = old_bal + recovery_val
+                            new_bal = old_bal + total_close_credit
                             if wallet_item:
                                 wallet_item.value = str(new_bal)
 
                             ledger_entry = StraddleWalletLedger(
                                 session_id=sess.id,
                                 entry_type="TRADE_CLOSE",
-                                amount=recovery_val,
+                                amount=total_close_credit,
                                 balance_after=new_bal,
-                                detail=f"Session #{sess.id} Squareoff closed - Recovery value credited: ${recovery_val:.2f}"
+                                detail=f"Session #{sess.id} Hard Squareoff at {sq_end} - Option recovery ${option_recovery:.2f} + Futures PnL ${fut_realized:.2f}",
+                                created_at=now_ist
                             )
                             db.add(ledger_entry)
 
-                        db.commit()
+                            sess.status = "Completed"
+                            sess.futures_status = "Closed" if sess.futures_status == "Open" else sess.futures_status
+                            sess.pnl_realized = (option_recovery + fut_realized) - (sess.net_straddle_ask * qty)
+                            db.commit()
+
                         self.active_session_id = None
+                        self.current_strike = 0.0
+                        self.current_call_mark = 0.0
+                        self.current_put_mark = 0.0
                         
                     self.state = "COMPLETED"
                     self.flush_pending_config_on_window_close(db)
