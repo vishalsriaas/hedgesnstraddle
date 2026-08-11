@@ -19,9 +19,7 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
     # Straddle Details
     straddle_cfg = {c.key: c.value for c in db.query(StraddleConfig).all()}
     straddle_sessions = db.query(StraddleSession).order_by(StraddleSession.id.desc()).limit(10).all()
-    active_straddle = None
-    if straddle_engine.active_session_id:
-        active_straddle = db.query(StraddleSession).filter(StraddleSession.id == straddle_engine.active_session_id, StraddleSession.status == "Open").first()
+    latest_straddle = straddle_sessions[0] if straddle_sessions else None
 
     # Hedge Details
     hedge_cfg = {c.key: c.value for c in db.query(HedgeConfig).all()}
@@ -69,7 +67,7 @@ async def get_dashboard_snapshot(db: Session = Depends(get_db)):
             "state": straddle_engine.state,
             "config": straddle_cfg,
             "trade_qty": float(straddle_cfg.get("TRADE_QTY", "10")),   # explicit field for JS PnL calc
-            "active_session": active_straddle,
+            "active_session": latest_straddle,
             "live_futures_mark": straddle_engine.last_futures_mark,
             "live_call_strike": straddle_engine.current_strike,
             "live_put_strike": straddle_engine.current_strike,
