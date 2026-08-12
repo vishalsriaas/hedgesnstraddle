@@ -244,15 +244,19 @@ async function fetchSnapshot() {
                 sessionPnlEl.style.color = netSessionPnl >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
 
             } else {
-                document.getElementById("call-strike-val").innerText = data.straddle.live_call_strike || (Math.round(btcSpot / 100) * 100);
+                const matchedStrike = (data.straddle.live_call_strike && data.straddle.live_call_strike > 0)
+                    ? Number(data.straddle.live_call_strike).toLocaleString()
+                    : (btcSpot > 0 ? (Math.round(btcSpot / 500) * 500).toLocaleString() : "-");
+
+                document.getElementById("call-strike-val").innerText = matchedStrike;
                 document.getElementById("call-entry-val").innerText = "-";
-                document.getElementById("call-ask-val").innerText = `$${liveCallAsk.toFixed(2)}`;
+                document.getElementById("call-ask-val").innerText = liveCallAsk > 0 ? `$${liveCallAsk.toFixed(2)}` : "-";
                 document.getElementById("call-pnl-val").innerText = "+$0.00";
                 document.getElementById("call-pnl-val").style.color = "var(--text-muted)";
 
-                document.getElementById("put-strike-val").innerText = data.straddle.live_put_strike || (Math.round(btcSpot / 100) * 100);
+                document.getElementById("put-strike-val").innerText = matchedStrike;
                 document.getElementById("put-entry-val").innerText = "-";
-                document.getElementById("put-ask-val").innerText = `$${livePutAsk.toFixed(2)}`;
+                document.getElementById("put-ask-val").innerText = livePutAsk > 0 ? `$${livePutAsk.toFixed(2)}` : "-";
                 document.getElementById("put-pnl-val").innerText = "+$0.00";
                 document.getElementById("put-pnl-val").style.color = "var(--text-muted)";
 
