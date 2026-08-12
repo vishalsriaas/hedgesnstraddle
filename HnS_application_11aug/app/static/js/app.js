@@ -297,8 +297,8 @@ async function fetchSnapshot() {
                         <td>${s.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
-                if (straddleBody) straddleBody.innerHTML = rowsHtml;
-                if (straddleViewBody) straddleViewBody.innerHTML = rowsHtml;
+                if (straddleBody && straddleBody.innerHTML !== rowsHtml) straddleBody.innerHTML = rowsHtml;
+                if (straddleViewBody && straddleViewBody.innerHTML !== rowsHtml) straddleViewBody.innerHTML = rowsHtml;
             }
 
             const hedgeBody = document.getElementById("hedge-sessions-table-body");
@@ -317,8 +317,8 @@ async function fetchSnapshot() {
                         <td>${h.exit_reason || '-'}</td>
                     </tr>
                 `).join("");
-                if (hedgeBody) hedgeBody.innerHTML = hedgeRowsHtml;
-                if (hedgeViewBody) hedgeViewBody.innerHTML = hedgeRowsHtml;
+                if (hedgeBody && hedgeBody.innerHTML !== hedgeRowsHtml) hedgeBody.innerHTML = hedgeRowsHtml;
+                if (hedgeViewBody && hedgeViewBody.innerHTML !== hedgeRowsHtml) hedgeViewBody.innerHTML = hedgeRowsHtml;
             }
 
 function formatDisplayTime(dtStr) {
@@ -351,9 +351,10 @@ function formatDisplayTime(dtStr) {
                     </tr>
                     `;
                 }).join("");
-                if (straddleOrdersViewBody) straddleOrdersViewBody.innerHTML = ordersHtml;
+                if (straddleOrdersViewBody && straddleOrdersViewBody.innerHTML !== ordersHtml) straddleOrdersViewBody.innerHTML = ordersHtml;
             } else if (straddleOrdersViewBody) {
-                straddleOrdersViewBody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No trade orders submitted yet.</td></tr>';
+                const emptyOrdersHtml = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No trade orders submitted yet.</td></tr>';
+                if (straddleOrdersViewBody.innerHTML !== emptyOrdersHtml) straddleOrdersViewBody.innerHTML = emptyOrdersHtml;
             }
 
             // Render Straddle Wallet Ledger Table
@@ -372,9 +373,10 @@ function formatDisplayTime(dtStr) {
                     </tr>
                     `;
                 }).join("");
-                if (straddleLedgerViewBody) straddleLedgerViewBody.innerHTML = ledgerHtml;
+                if (straddleLedgerViewBody && straddleLedgerViewBody.innerHTML !== ledgerHtml) straddleLedgerViewBody.innerHTML = ledgerHtml;
             } else if (straddleLedgerViewBody) {
-                straddleLedgerViewBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No wallet ledger entries logged.</td></tr>';
+                const emptyLedgerHtml = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No wallet ledger entries logged.</td></tr>';
+                if (straddleLedgerViewBody.innerHTML !== emptyLedgerHtml) straddleLedgerViewBody.innerHTML = emptyLedgerHtml;
             }
 
             // Render Hedge Open Positions Table
@@ -391,8 +393,11 @@ function formatDisplayTime(dtStr) {
                         <td style="color: ${(p.unrealized_pnl || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${(p.unrealized_pnl || 0).toFixed(2)}</td>
                     </tr>
                 `).join("");
-                if (hedgePositionsViewBody) hedgePositionsViewBody.innerHTML = posHtml;
+                if (hedgePositionsViewBody && hedgePositionsViewBody.innerHTML !== posHtml) hedgePositionsViewBody.innerHTML = posHtml;
             } else if (hedgePositionsViewBody) {
+                const emptyPosHtml = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>';
+                if (hedgePositionsViewBody.innerHTML !== emptyPosHtml) hedgePositionsViewBody.innerHTML = emptyPosHtml;
+            }
                 hedgePositionsViewBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>';
             }
         }
