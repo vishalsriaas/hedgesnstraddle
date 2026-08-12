@@ -402,8 +402,6 @@ function formatDisplayTime(dtStr) {
                 const emptyPosHtml = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>';
                 if (hedgePositionsViewBody.innerHTML !== emptyPosHtml) hedgePositionsViewBody.innerHTML = emptyPosHtml;
             }
-                hedgePositionsViewBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>';
-            }
         }
     } catch (err) {
         console.error("Error fetching snapshot:", err);
