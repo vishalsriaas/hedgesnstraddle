@@ -1,0 +1,17 @@
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+ENV/
+
+# Database & SQLite
+*.db
+hedgesnstraddle.db
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
