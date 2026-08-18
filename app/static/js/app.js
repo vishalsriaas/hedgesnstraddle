@@ -15,8 +15,10 @@ function setTextContent(el, text) {
     }
 }
 
-async function ensureAuthToken() {
-    if (authToken) return true;
+async function ensureAuthToken(force = false) {
+    if (authToken && !force) return true;
+    authToken = "";
+    localStorage.removeItem("token");
     try {
         const formData = new URLSearchParams();
         formData.append("username", "admin");
@@ -573,7 +575,7 @@ async function saveStraddleConfig(e) {
     });
 
     try {
-        const res = await fetch("/api/v1/config/straddle", {
+        let res = await fetch("/api/v1/config/straddle", {
             method: "POST",
             headers: { 
                 "Content-Type": "application/json",
@@ -581,6 +583,22 @@ async function saveStraddleConfig(e) {
             },
             body: JSON.stringify(payload)
         });
+
+        // If 401 Unauthorized, automatically re-authenticate and retry request once
+        if (res.status === 401) {
+            const refreshed = await ensureAuthToken(true);
+            if (refreshed) {
+                res = await fetch("/api/v1/config/straddle", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${authToken}` 
+                    },
+                    body: JSON.stringify(payload)
+                });
+            }
+        }
+
         if (res.ok) {
             const data = await res.json();
             alert(data.message || "Configuration updated live immediately.");
