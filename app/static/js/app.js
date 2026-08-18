@@ -583,11 +583,14 @@ async function saveStraddleConfig(e) {
         });
         if (res.ok) {
             const data = await res.json();
-            alert(data.message);
+            alert(data.message || "Configuration updated live immediately.");
             loadStraddleConfig();
+        } else {
+            const errData = await res.json().catch(() => ({}));
+            alert(`Save failed (${res.status}): ${errData.detail || 'Unauthorized or Invalid request. Please re-login.'}`);
         }
     } catch (err) {
-        alert("Error saving straddle configuration.");
+        alert("Error saving straddle configuration: " + err.message);
     }
 }
 
