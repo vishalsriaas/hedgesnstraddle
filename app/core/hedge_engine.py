@@ -621,7 +621,8 @@ class HedgeEngine:
         now_ist = datetime.now(ist).replace(tzinfo=None)
 
         futures_mark = await get_btc_futures_mark_price()
-        opts_dict = await get_btc_options_mark_prices()
+        opts_list = await get_btc_options_mark_prices()
+        opts_dict = {item.get("symbol", ""): float(item.get("markPrice", 0.0)) for item in opts_list if isinstance(item, dict)}
         open_positions = db.query(HedgeOpenPosition).all()
 
         total_realized_pnl = 0.0
