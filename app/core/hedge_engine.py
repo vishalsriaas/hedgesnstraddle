@@ -55,26 +55,57 @@ class HedgeEngine:
         slot1_cfg = self.get_role_strategy_config(db, "1st Trader")
         slot2_cfg = self.get_role_strategy_config(db, "2nd Trader")
 
-        w_start_h = slot1_cfg.trade_start_h if slot1_cfg else 6
-        w_start_m = slot1_cfg.trade_start_m if slot1_cfg else 0
-        w_end_h = slot1_cfg.trade_end_h if slot1_cfg else 7
-        w_end_m = slot1_cfg.trade_end_m if slot1_cfg else 30
-        sq_h = slot1_cfg.force_close_h if slot1_cfg else 11
-        sq_m = slot1_cfg.force_close_m if slot1_cfg else 30
-
-        window_start = f"{w_start_h:02d}:{w_start_m:02d}"
-        window_end = f"{w_end_h:02d}:{w_end_m:02d}"
-        sq_end = f"{sq_h:02d}:{sq_m:02d}"
-
         now_time_full = datetime.now(ist).strftime("%H:%M:%S")
         now_time_str = now_time_full[:5]
-
         now_rel = get_session_relative_minutes(now_time_str)
-        w_start_rel = get_session_relative_minutes(window_start)
-        w_end_rel = get_session_relative_minutes(window_end)
-        sq_end_rel = get_session_relative_minutes(sq_end)
 
-        cond_time_window_valid = (w_start_rel <= now_rel <= w_end_rel)
+        # Slot 1 Config & Countdown Timers
+        w1_start_h = slot1_cfg.trade_start_h if slot1_cfg else 6
+        w1_start_m = slot1_cfg.trade_start_m if slot1_cfg else 0
+        w1_end_h = slot1_cfg.trade_end_h if slot1_cfg else 7
+        w1_end_m = slot1_cfg.trade_end_m if slot1_cfg else 30
+        sq1_h = slot1_cfg.force_close_h if slot1_cfg else 11
+        sq1_m = slot1_cfg.force_close_m if slot1_cfg else 30
+
+        w1_start = f"{w1_start_h:02d}:{w1_start_m:02d}"
+        w1_end = f"{w1_end_h:02d}:{w1_end_m:02d}"
+        sq1_end = f"{sq1_h:02d}:{sq1_m:02d}"
+
+        w1_start_rel = get_session_relative_minutes(w1_start)
+        sq1_end_rel = get_session_relative_minutes(sq1_end)
+
+        diff1_open = w1_start_rel - now_rel
+        if diff1_open < 0: diff1_open += 1440
+        slot1_open_cd = f"{diff1_open//60:02d}:{diff1_open%60:02d}:00" if diff1_open > 0 else "OPEN NOW"
+
+        diff1_sq = sq1_end_rel - now_rel
+        if diff1_sq < 0: diff1_sq += 1440
+        slot1_sq_cd = f"{diff1_sq//60:02d}:{diff1_sq%60:02d}:00"
+
+        # Slot 2 Config & Countdown Timers
+        w2_start_h = slot2_cfg.trade_start_h if slot2_cfg else 6
+        w2_start_m = slot2_cfg.trade_start_m if slot2_cfg else 0
+        w2_end_h = slot2_cfg.trade_end_h if slot2_cfg else 7
+        w2_end_m = slot2_cfg.trade_end_m if slot2_cfg else 30
+        sq2_h = slot2_cfg.force_close_h if slot2_cfg else 11
+        sq2_m = slot2_cfg.force_close_m if slot2_cfg else 30
+
+        w2_start = f"{w2_start_h:02d}:{w2_start_m:02d}"
+        w2_end = f"{w2_end_h:02d}:{w2_end_m:02d}"
+        sq2_end = f"{sq2_h:02d}:{sq2_m:02d}"
+
+        w2_start_rel = get_session_relative_minutes(w2_start)
+        sq2_end_rel = get_session_relative_minutes(sq2_end)
+
+        diff2_open = w2_start_rel - now_rel
+        if diff2_open < 0: diff2_open += 1440
+        slot2_open_cd = f"{diff2_open//60:02d}:{diff2_open%60:02d}:00" if diff2_open > 0 else "OPEN NOW"
+
+        diff2_sq = sq2_end_rel - now_rel
+        if diff2_sq < 0: diff2_sq += 1440
+        slot2_sq_cd = f"{diff2_sq//60:02d}:{diff2_sq%60:02d}:00"
+
+        cond_time_window_valid = (w1_start_rel <= now_rel <= get_session_relative_minutes(w1_end))
         max_premium = slot1_cfg.max_premium if slot1_cfg else 280.0
         max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
 
@@ -104,15 +135,17 @@ class HedgeEngine:
             "server_time": now_time_full,
             "last_spot_price": self.last_spot_price,
             "last_futures_mark": self.last_futures_mark,
-            "window_start": window_start,
-            "window_end": window_end,
-            "sq_end": sq_end,
             "max_option_spend": max_option_spend,
             "hedge_paper_wallet_usdt": hedge_wallet_val,
             "slot1": {
                 "role": "1st Trader",
                 "direction": slot1_dir,
                 "qty": slot1_qty,
+                "window_start": w1_start,
+                "window_end": w1_end,
+                "sq_end": sq1_end,
+                "open_countdown": slot1_open_cd,
+                "squareoff_countdown": slot1_sq_cd,
                 "strike": self.slot1_strike or (round(self.last_futures_mark / 250.0) * 250.0),
                 "option_mark": self.slot1_option_mark or 150.0,
                 "futures_entry": slot1_fut_entry if self.slot1_session_id else 0.0,
@@ -123,6 +156,11 @@ class HedgeEngine:
                 "role": "2nd Trader",
                 "direction": slot2_dir,
                 "qty": slot2_qty,
+                "window_start": w2_start,
+                "window_end": w2_end,
+                "sq_end": sq2_end,
+                "open_countdown": slot2_open_cd,
+                "squareoff_countdown": slot2_sq_cd,
                 "strike": self.slot2_strike or (round(self.last_futures_mark / 250.0) * 250.0),
                 "option_mark": self.slot2_option_mark or 150.0,
                 "futures_entry": slot2_fut_entry if self.slot2_session_id else 0.0,
@@ -188,8 +226,7 @@ class HedgeEngine:
         Returns: (strike_price, option_mark, expiry_sym, symbol)
         """
         mark_prices = await get_btc_options_mark_prices()
-        now_dt = datetime.now(ist)
-        today_sym = now_dt.strftime("%y%m%d")
+        target_type = "P" if direction == "Bullish" else "C"
 
         candidates = []
         if mark_prices:
@@ -198,32 +235,33 @@ class HedgeEngine:
                 parts = sym.split("-")
                 if len(parts) == 4 and parts[0] == "BTC":
                     exp_sym, strk_str, opt_type = parts[1], parts[2], parts[3]
-                    if exp_sym == today_sym:
+                    if opt_type == target_type:
                         try:
                             strk = float(strk_str)
-                            mark_p = float(item.get("markPrice", 150.0))
+                            mark_p = float(item.get("markPrice", 0.0))
                             candidates.append((strk, mark_p, exp_sym, opt_type, sym))
                         except ValueError:
                             pass
 
-        target_type = "P" if direction == "Bullish" else "C"
-        matching = [c for c in candidates if c[3] == target_type]
+        if candidates:
+            # Pick nearest active expiry from available Binance expiries
+            expiries = sorted(list(set(c[2] for c in candidates)))
+            nearest_expiry = expiries[0]
+            exp_candidates = [c for c in candidates if c[2] == nearest_expiry]
 
-        if not matching:
-            # Fallback strike estimation if mock/live mark feed unavailable
-            strike = round(futures_mark / 250.0) * 250.0
-            return (strike, 150.0, today_sym, f"BTC-{today_sym}-{int(strike)}-{target_type}")
+            if direction == "Bullish":
+                itm = [c for c in exp_candidates if c[0] >= futures_mark]
+                best = min(itm, key=lambda x: x[0]) if itm else max(exp_candidates, key=lambda x: x[0])
+            else:
+                itm = [c for c in exp_candidates if c[0] <= futures_mark]
+                best = max(itm, key=lambda x: x[0]) if itm else min(exp_candidates, key=lambda x: x[0])
 
-        if direction == "Bullish":
-            # ITM PUT: Strike >= futures_mark, pick smallest Strike >= futures_mark
-            itm = [c for c in matching if c[0] >= futures_mark]
-            best = min(itm, key=lambda x: x[0]) if itm else max(matching, key=lambda x: x[0])
-        else:
-            # ITM CALL: Strike <= futures_mark, pick largest Strike <= futures_mark
-            itm = [c for c in matching if c[0] <= futures_mark]
-            best = max(itm, key=lambda x: x[0]) if itm else min(matching, key=lambda x: x[0])
+            return (best[0], best[1], best[2], best[4])
 
-        return (best[0], best[1], best[2], best[4])
+        now_dt = datetime.now(ist)
+        today_sym = now_dt.strftime("%y%m%d")
+        strike = round(futures_mark / 250.0) * 250.0
+        return (strike, 150.0, today_sym, f"BTC-{today_sym}-{int(strike)}-{target_type}")
 
     async def execute_slot_entry(
         self, db: Session, role_name: str, role_config: HedgeStrategyConfig, 

@@ -355,6 +355,9 @@ async function fetchSnapshot() {
                 }
                 setTextContent(document.getElementById("hedge-slot1-dir"), `${slot1.direction || 'Bullish'} (${slot1.direction === 'Bullish' ? 'BUY PUT + LONG Fut' : 'BUY CALL + SHORT Fut'})`);
                 setTextContent(document.getElementById("hedge-slot1-qty"), `${slot1.qty || 1.0} BTC`);
+                setTextContent(document.getElementById("hedge-slot1-window-range"), `${slot1.window_start || '06:00'} - ${slot1.window_end || '07:30'}`);
+                setTextContent(document.getElementById("hedge-slot1-open-cd"), slot1.open_countdown || "00:00:00");
+                setTextContent(document.getElementById("hedge-slot1-sq-cd"), `${slot1.sq_end || '11:30'} AM (${slot1.squareoff_countdown || '00:00:00'})`);
                 setTextContent(document.getElementById("hedge-slot1-strike"), `$${(slot1.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 setTextContent(document.getElementById("hedge-slot1-opt-mark"), `$${(slot1.option_mark || 0).toFixed(2)}`);
                 setTextContent(document.getElementById("hedge-slot1-fut-entry"), slot1.futures_entry ? `$${slot1.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
@@ -369,6 +372,9 @@ async function fetchSnapshot() {
                 }
                 setTextContent(document.getElementById("hedge-slot2-dir"), `${slot2.direction || 'Bearish'} (${slot2.direction === 'Bullish' ? 'BUY PUT + LONG Fut' : 'BUY CALL + SHORT Fut'})`);
                 setTextContent(document.getElementById("hedge-slot2-qty"), `${slot2.qty || 1.0} BTC`);
+                setTextContent(document.getElementById("hedge-slot2-window-range"), `${slot2.window_start || '06:00'} - ${slot2.window_end || '07:30'}`);
+                setTextContent(document.getElementById("hedge-slot2-open-cd"), slot2.open_countdown || "00:00:00");
+                setTextContent(document.getElementById("hedge-slot2-sq-cd"), `${slot2.sq_end || '11:30'} AM (${slot2.squareoff_countdown || '00:00:00'})`);
                 setTextContent(document.getElementById("hedge-slot2-strike"), `$${(slot2.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 setTextContent(document.getElementById("hedge-slot2-opt-mark"), `$${(slot2.option_mark || 0).toFixed(2)}`);
                 setTextContent(document.getElementById("hedge-slot2-fut-entry"), slot2.futures_entry ? `$${slot2.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
