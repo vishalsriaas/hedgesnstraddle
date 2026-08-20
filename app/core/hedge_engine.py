@@ -17,12 +17,37 @@ logger = logging.getLogger("hedgesnstraddle.hedge_engine")
 ist = timezone(timedelta(hours=5, minutes=30))
 
 def get_session_relative_minutes(time_str: str) -> int:
+    """
+    Calculates minutes relative to Binance Expiry Session Start (13:31 PM IST = Minute 0).
+    Binance Daily Options expire at 13:30 PM IST (08:00 UTC) every day.
+    Session Cycle: 13:31 PM (Day 1) to 13:30 PM (Day 2) = Relative Minutes 0 to 1439.
+    """
     try:
-        h, m = map(int, time_str.split(":"))
-        rel_m = h * 60 + m
-        return rel_m if rel_m >= 300 else rel_m + 1440
+        parts = time_str.split(":")
+        h = int(parts[0])
+        m = int(parts[1])
+        mins_from_midnight = h * 60 + m
+        session_start_mins = 13 * 60 + 31  # 811 mins (13:31 PM IST)
+        
+        if mins_from_midnight >= session_start_mins:
+            return mins_from_midnight - session_start_mins
+        else:
+            return (mins_from_midnight + 1440) - session_start_mins
     except Exception:
         return 0
+
+def get_current_binance_session_date() -> str:
+    """
+    Returns the target Binance Expiry Date Key (YYMMDD) for the active trading session.
+    If server time is >= 13:30:00 IST, the trading session targets tomorrow's 13:30 expiry date.
+    If server time is < 13:30:00 IST, the trading session targets today's 13:30 expiry date.
+    """
+    now_ist = datetime.now(ist)
+    if now_ist.time() >= datetime.strptime("13:30:00", "%H:%M:%S").time():
+        session_dt = now_ist + timedelta(days=1)
+    else:
+        session_dt = now_ist
+    return session_dt.strftime("%y%m%d")
 
 class HedgeEngine:
     def __init__(self):
@@ -38,6 +63,10 @@ class HedgeEngine:
         self.slot2_strike: Optional[float] = None
         self.slot1_option_mark: Optional[float] = None
         self.slot2_option_mark: Optional[float] = None
+
+        self.slot1_traded_session_key: Optional[str] = None
+        self.slot2_traded_session_key: Optional[str] = None
+        self.active_session_key: Optional[str] = None
         
         self.tp_rank_1_slot: Optional[str] = None  # '1st Trader' or '2nd Trader'
         self.tp_rank_2_slot: Optional[str] = None
@@ -335,6 +364,18 @@ class HedgeEngine:
         max_premium = role_config.max_premium
         max_tv = role_config.max_time_value
 
+        current_session_key = get_current_binance_session_date()
+
+        # Strict Single-Trade Per Binance Expiry Session Lock
+        if role_name == "1st Trader":
+            if self.slot1_traded_session_key == current_session_key:
+                logger.info("1st Trader already traded for Binance Expiry Session [%s] - BLOCKED", current_session_key)
+                return None
+        else:
+            if self.slot2_traded_session_key == current_session_key:
+                logger.info("2nd Trader already traded for Binance Expiry Session [%s] - BLOCKED", current_session_key)
+                return None
+
         # Determine direction: Check if explicit (Bullish/Bearish) or Auto (evaluate both)
         pref_direction = role_config.direction or "Auto"
         if pref_direction in ["Bullish", "Bearish"]:
@@ -444,11 +485,13 @@ class HedgeEngine:
             self.slot1_strike = strike
             self.slot1_option_mark = option_mark
             self.slot1_direction = direction
+            self.slot1_traded_session_key = current_session_key
         else:
             self.slot2_session_id = sess.id
             self.slot2_strike = strike
             self.slot2_option_mark = option_mark
             self.slot2_direction = direction
+            self.slot2_traded_session_key = current_session_key
 
         return sess.id
 
@@ -595,16 +638,22 @@ class HedgeEngine:
                 w_end_rel = get_session_relative_minutes(f"{w_end_h:02d}:{w_end_m:02d}")
                 sq_end_rel = get_session_relative_minutes(f"{sq_h:02d}:{sq_m:02d}")
 
+                current_session_key = get_current_binance_session_date()
+                if self.active_session_key != current_session_key:
+                    # New Binance Expiry Session started! (Rollover past 13:30 PM IST)
+                    logger.info("Binance Expiry Session Rollover detected -> New Session Key: %s", current_session_key)
+                    self.active_session_key = current_session_key
+                    self.slot1_completed = False
+                    self.slot2_completed = False
+                    self.slot1_traded_session_key = None
+                    self.slot2_traded_session_key = None
+                    if self.state in ["COMPLETED", "SQUAREOFF"]:
+                        self.state = "IDLE"
+
                 # 1. State Transition: Entry Window Active
                 if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE"]:
                     self.state = "ENTRY_WINDOW"
-                    logger.info("Entering Hedge Entry Window (%02d:%02d - %02d:%02d)", w_start_h, w_start_m, w_end_h, w_end_m)
-                elif now_rel > sq_end_rel:
-                    # Reset completed flags outside session window for next daily cycle
-                    self.slot1_completed = False
-                    self.slot2_completed = False
-                    if self.state in ["COMPLETED", "SQUAREOFF"]:
-                        self.state = "IDLE"
+                    logger.info("Entering Hedge Entry Window (%02d:%02d - %02d:%02d) for Session [%s]", w_start_h, w_start_m, w_end_h, w_end_m, current_session_key)
 
                 # 2. Phase 1: Slot 1 & Slot 2 Entry Evaluation
                 if self.state == "ENTRY_WINDOW":
