@@ -211,6 +211,7 @@ class HedgeSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     symbol = Column(String(50), default="BTCUSDT")
+    expiry_session = Column(String(50), nullable=True)
     status = Column(String(50), default="Open")
     bull_entry = Column(Float, default=0.0)
     bear_entry = Column(Float, default=0.0)

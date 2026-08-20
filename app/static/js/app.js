@@ -520,6 +520,7 @@ async function fetchSnapshot() {
                     <tr>
                         <td><b>#${h.id}</b></td>
                         <td>${h.symbol}</td>
+                        <td><span class="badge badge-info">${h.expiry_session || '-'}</span></td>
                         <td><span class="badge ${h.status === 'Open' ? 'badge-success' : 'badge-warning'}">${h.status}</span></td>
                         <td>$${(h.bull_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bear_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>

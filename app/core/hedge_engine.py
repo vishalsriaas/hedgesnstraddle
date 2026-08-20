@@ -534,6 +534,7 @@ class HedgeEngine:
         # 1. Create HedgeSession
         sess = HedgeSession(
             symbol="BTCUSDT",
+            expiry_session=current_session_key,
             status="Open",
             bull_entry=futures_mark if is_bullish else 0.0,
             bear_entry=futures_mark if not is_bullish else 0.0,
@@ -620,6 +621,7 @@ class HedgeEngine:
         now_ist = datetime.now(ist).replace(tzinfo=None)
 
         futures_mark = await get_btc_futures_mark_price()
+        opts_dict = await get_btc_options_mark_prices()
         open_positions = db.query(HedgeOpenPosition).all()
 
         total_realized_pnl = 0.0
@@ -645,8 +647,21 @@ class HedgeEngine:
                 )
                 db.add(close_order)
             else:
-                # Option close at market
-                pnl = (100.0 - pos.entry_price) * qty  # fallback option close mark
+                # Option close at live market price or intrinsic valuation fallback
+                live_opt_price = opts_dict.get(pos.symbol, 0.0)
+                if live_opt_price <= 0.0:
+                    try:
+                        parts = pos.symbol.split("-")
+                        strike_val = float(parts[2])
+                        is_put = parts[3] == "P"
+                        if is_put:
+                            live_opt_price = max(0.0, strike_val - futures_mark)
+                        else:
+                            live_opt_price = max(0.0, futures_mark - strike_val)
+                    except Exception:
+                        live_opt_price = pos.entry_price
+
+                pnl = (live_opt_price - pos.entry_price) * qty
                 close_order = HedgeTradeOrder(
                     session_id=pos.session_id,
                     symbol=pos.symbol,
@@ -654,7 +669,7 @@ class HedgeEngine:
                     trader_leg=self.active_role,
                     order_type="MARKET",
                     qty=qty,
-                    price=100.0,
+                    price=round(live_opt_price, 2),
                     status="FILLED",
                     created_at=now_ist
                 )
