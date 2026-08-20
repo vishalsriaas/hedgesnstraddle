@@ -353,7 +353,13 @@ async function fetchSnapshot() {
                     setTextContent(slot1Badge, slot1.status || "IDLE");
                     slot1Badge.className = `badge ${slot1.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
                 }
-                setTextContent(document.getElementById("hedge-slot1-dir"), `${slot1.direction || 'Bullish'} (${slot1.direction === 'Bullish' ? 'BUY PUT + LONG Fut' : 'BUY CALL + SHORT Fut'})`);
+                let slot1DirText = "Auto-Match (Evaluates Both Bullish & Bearish)";
+                if (slot1.direction === "Bullish") {
+                    slot1DirText = "Bullish (BUY PUT + LONG Fut)";
+                } else if (slot1.direction === "Bearish") {
+                    slot1DirText = "Bearish (BUY CALL + SHORT Fut)";
+                }
+                setTextContent(document.getElementById("hedge-slot1-dir"), slot1DirText);
                 setTextContent(document.getElementById("hedge-slot1-qty"), `${slot1.qty || 1.0} BTC`);
                 setTextContent(document.getElementById("hedge-slot1-window-range"), `${slot1.window_start || '06:00'} - ${slot1.window_end || '07:30'}`);
                 setTextContent(document.getElementById("hedge-slot1-open-cd"), slot1.open_countdown || "00:00:00");
@@ -370,7 +376,13 @@ async function fetchSnapshot() {
                     setTextContent(slot2Badge, slot2.status || "IDLE");
                     slot2Badge.className = `badge ${slot2.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
                 }
-                setTextContent(document.getElementById("hedge-slot2-dir"), `${slot2.direction || 'Bearish'} (${slot2.direction === 'Bullish' ? 'BUY PUT + LONG Fut' : 'BUY CALL + SHORT Fut'})`);
+                let slot2DirText = "Auto-Match (Evaluates Both Bullish & Bearish)";
+                if (slot2.direction === "Bullish") {
+                    slot2DirText = "Bullish (BUY PUT + LONG Fut)";
+                } else if (slot2.direction === "Bearish") {
+                    slot2DirText = "Bearish (BUY CALL + SHORT Fut)";
+                }
+                setTextContent(document.getElementById("hedge-slot2-dir"), slot2DirText);
                 setTextContent(document.getElementById("hedge-slot2-qty"), `${slot2.qty || 1.0} BTC`);
                 setTextContent(document.getElementById("hedge-slot2-window-range"), `${slot2.window_start || '06:00'} - ${slot2.window_end || '07:30'}`);
                 setTextContent(document.getElementById("hedge-slot2-open-cd"), slot2.open_countdown || "00:00:00");

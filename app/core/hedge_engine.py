@@ -277,11 +277,26 @@ class HedgeEngine:
         Executes atomic slot trade: BUY Option @ option_mark + OPEN Futures @ futures_mark.
         Sets Futures TP = futures_entry ± option_mark.
         """
-        direction = role_config.direction or "Bullish"
-        qty = role_config.contract_qty
-        max_premium = role_config.max_premium
+        # Determine direction: Check if explicit (Bullish/Bearish) or Auto (evaluate both)
+        pref_direction = role_config.direction or "Auto"
+        if pref_direction in ["Bullish", "Bearish"]:
+            strike, option_mark, expiry_sym, opt_symbol = await self.find_nearest_itm_option(futures_mark, pref_direction)
+            direction = pref_direction
+        else:
+            # Auto-detect direction: evaluate Bullish vs Bearish ITM options
+            strike_b, mark_b, exp_b, sym_b = await self.find_nearest_itm_option(futures_mark, "Bullish")
+            strike_r, mark_r, exp_r, sym_r = await self.find_nearest_itm_option(futures_mark, "Bearish")
+            
+            valid_b = (mark_b <= max_premium) and self.validate_option_spend(mark_b, qty, max_option_spend)
+            valid_r = (mark_r <= max_premium) and self.validate_option_spend(mark_r, qty, max_option_spend)
 
-        strike, option_mark, expiry_sym, opt_symbol = await self.find_nearest_itm_option(futures_mark, direction)
+            if valid_b and not valid_r:
+                direction, strike, option_mark, expiry_sym, opt_symbol = "Bullish", strike_b, mark_b, exp_b, sym_b
+            elif valid_r and not valid_b:
+                direction, strike, option_mark, expiry_sym, opt_symbol = "Bearish", strike_r, mark_r, exp_r, sym_r
+            else:
+                # Default to Bullish if both valid
+                direction, strike, option_mark, expiry_sym, opt_symbol = "Bullish", strike_b, mark_b, exp_b, sym_b
 
         # Rule B: Premium Cap Check (option_mark <= max_premium) and Spend Limit
         if option_mark > max_premium:
