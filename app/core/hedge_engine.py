@@ -106,32 +106,25 @@ class HedgeEngine:
         slot2_sq_cd = f"{diff2_sq//60:02d}:{diff2_sq%60:02d}:00"
 
         cond_time_window_valid = (w1_start_rel <= now_rel <= get_session_relative_minutes(w1_end))
-        max_premium = slot1_cfg.max_premium if slot1_cfg else 280.0
         max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
 
-        slot1_dir = slot1_cfg.direction if slot1_cfg else "Bullish"
-        slot1_qty = slot1_cfg.contract_qty if slot1_cfg else 1.0
-        slot1_strk = self.slot1_strike if self.slot1_session_id else getattr(self, "preview_slot1_strike", (round(self.last_futures_mark / 250.0) * 250.0))
-        slot1_opt_mark = self.slot1_option_mark if self.slot1_session_id else getattr(self, "preview_slot1_option_mark", 0.0)
+        # Slot 1 Bullish & Bearish live data
+        s1_max_prem = slot1_cfg.max_premium if slot1_cfg else 250.0
+        s1_qty = slot1_cfg.contract_qty if slot1_cfg else 1.0
 
-        slot2_dir = slot2_cfg.direction if slot2_cfg else "Bearish"
-        slot2_qty = slot2_cfg.contract_qty if slot2_cfg else 1.0
-        slot2_strk = self.slot2_strike if self.slot2_session_id else getattr(self, "preview_slot2_strike", (round(self.last_futures_mark / 250.0) * 250.0))
-        slot2_opt_mark = self.slot2_option_mark if self.slot2_session_id else getattr(self, "preview_slot2_option_mark", 0.0)
+        s1_put_strk = getattr(self, "preview_slot1_put_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s1_put_mark = getattr(self, "preview_slot1_put_mark", 0.0)
+        s1_call_strk = getattr(self, "preview_slot1_call_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s1_call_mark = getattr(self, "preview_slot1_call_mark", 0.0)
 
-        cond_rule_a_valid = True
-        cond_rule_b_valid = (slot1_opt_mark <= max_premium) if slot1_opt_mark > 0 else True
-        cond_rule_c_valid = True
-        if slot1_strk and slot2_strk:
-            cond_rule_c_valid = (slot2_strk >= slot1_strk)
+        # Slot 2 Bullish & Bearish live data
+        s2_max_prem = slot2_cfg.max_premium if slot2_cfg else 400.0
+        s2_qty = slot2_cfg.contract_qty if slot2_cfg else 1.0
 
-        cond_max_spend_valid = (slot1_opt_mark * slot1_qty <= max_option_spend) if slot1_opt_mark > 0 else True
-
-        slot1_fut_entry = self.last_futures_mark
-        slot1_tp = (slot1_fut_entry + slot1_opt_mark) if slot1_dir == "Bullish" else (slot1_fut_entry - slot1_opt_mark)
-
-        slot2_fut_entry = self.last_futures_mark
-        slot2_tp = (slot2_fut_entry + slot2_opt_mark) if slot2_dir == "Bullish" else (slot2_fut_entry - slot2_opt_mark)
+        s2_put_strk = getattr(self, "preview_slot2_put_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s2_put_mark = getattr(self, "preview_slot2_put_mark", 0.0)
+        s2_call_strk = getattr(self, "preview_slot2_call_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s2_call_mark = getattr(self, "preview_slot2_call_mark", 0.0)
 
         hedge_wallet_val = float(cfg.get("PAPER_WALLET_USDT", "100000.0"))
 
@@ -145,39 +138,71 @@ class HedgeEngine:
             "hedge_paper_wallet_usdt": hedge_wallet_val,
             "slot1": {
                 "role": "1st Trader",
-                "direction": slot1_dir,
-                "qty": slot1_qty,
+                "qty": s1_qty,
                 "window_start": w1_start,
                 "window_end": w1_end,
                 "sq_end": sq1_end,
                 "open_countdown": slot1_open_cd,
                 "squareoff_countdown": slot1_sq_cd,
-                "strike": slot1_strk,
-                "option_mark": slot1_opt_mark,
-                "futures_entry": slot1_fut_entry if self.slot1_session_id else 0.0,
-                "futures_tp": slot1_tp if self.slot1_session_id else 0.0,
-                "status": "Active" if self.slot1_session_id else "Idle"
+                "status": "Active" if self.slot1_session_id else "Idle",
+                "filled_direction": getattr(self, "slot1_direction", None) if self.slot1_session_id else None,
+                "filled_strike": self.slot1_strike or 0.0,
+                "filled_opt_mark": self.slot1_option_mark or 0.0,
+                "filled_fut_entry": self.last_futures_mark if self.slot1_session_id else 0.0,
+                "filled_fut_tp": (self.last_futures_mark + (self.slot1_option_mark or 0.0)) if (getattr(self, "slot1_direction", "Bullish") == "Bullish") else (self.last_futures_mark - (self.slot1_option_mark or 0.0)),
+                "bullish": {
+                    "strike": s1_put_strk,
+                    "option_type": "PUT",
+                    "option_mark": s1_put_mark,
+                    "rule_b_valid": (s1_put_mark <= s1_max_prem) if s1_put_mark > 0 else True,
+                    "max_spend_valid": (s1_put_mark * s1_qty <= max_option_spend) if s1_put_mark > 0 else True,
+                    "futures_tp": self.last_futures_mark + s1_put_mark
+                },
+                "bearish": {
+                    "strike": s1_call_strk,
+                    "option_type": "CALL",
+                    "option_mark": s1_call_mark,
+                    "rule_b_valid": (s1_call_mark <= s1_max_prem) if s1_call_mark > 0 else True,
+                    "max_spend_valid": (s1_call_mark * s1_qty <= max_option_spend) if s1_call_mark > 0 else True,
+                    "futures_tp": self.last_futures_mark - s1_call_mark
+                }
             },
             "slot2": {
                 "role": "2nd Trader",
-                "direction": slot2_dir,
-                "qty": slot2_qty,
+                "qty": s2_qty,
                 "window_start": w2_start,
                 "window_end": w2_end,
                 "sq_end": sq2_end,
                 "open_countdown": slot2_open_cd,
                 "squareoff_countdown": slot2_sq_cd,
-                "strike": slot2_strk,
-                "option_mark": slot2_opt_mark,
-                "futures_entry": slot2_fut_entry if self.slot2_session_id else 0.0,
-                "futures_tp": slot2_tp if self.slot2_session_id else 0.0,
-                "status": "Active" if self.slot2_session_id else "Idle"
+                "status": "Active" if self.slot2_session_id else "Idle",
+                "filled_direction": getattr(self, "slot2_direction", None) if self.slot2_session_id else None,
+                "filled_strike": self.slot2_strike or 0.0,
+                "filled_opt_mark": self.slot2_option_mark or 0.0,
+                "filled_fut_entry": self.last_futures_mark if self.slot2_session_id else 0.0,
+                "filled_fut_tp": (self.last_futures_mark + (self.slot2_option_mark or 0.0)) if (getattr(self, "slot2_direction", "Bullish") == "Bullish") else (self.last_futures_mark - (self.slot2_option_mark or 0.0)),
+                "bullish": {
+                    "strike": s2_put_strk,
+                    "option_type": "PUT",
+                    "option_mark": s2_put_mark,
+                    "rule_b_valid": (s2_put_mark <= s2_max_prem) if s2_put_mark > 0 else True,
+                    "max_spend_valid": (s2_put_mark * s2_qty <= max_option_spend) if s2_put_mark > 0 else True,
+                    "futures_tp": self.last_futures_mark + s2_put_mark
+                },
+                "bearish": {
+                    "strike": s2_call_strk,
+                    "option_type": "CALL",
+                    "option_mark": s2_call_mark,
+                    "rule_b_valid": (s2_call_mark <= s2_max_prem) if s2_call_mark > 0 else True,
+                    "max_spend_valid": (s2_call_mark * s2_qty <= max_option_spend) if s2_call_mark > 0 else True,
+                    "futures_tp": self.last_futures_mark - s2_call_mark
+                }
             },
             "cond_time_window_valid": cond_time_window_valid,
-            "cond_rule_a_valid": cond_rule_a_valid,
-            "cond_rule_b_valid": cond_rule_b_valid,
-            "cond_rule_c_valid": cond_rule_c_valid,
-            "cond_max_spend_valid": cond_max_spend_valid
+            "cond_rule_a_valid": True,
+            "cond_rule_b_valid": True,
+            "cond_rule_c_valid": True,
+            "cond_max_spend_valid": True
         }
 
     def get_role_strategy_config(self, db: Session, role_name: str) -> Optional[HedgeStrategyConfig]:
@@ -382,10 +407,12 @@ class HedgeEngine:
             self.slot1_session_id = sess.id
             self.slot1_strike = strike
             self.slot1_option_mark = option_mark
+            self.slot1_direction = direction
         else:
             self.slot2_session_id = sess.id
             self.slot2_strike = strike
             self.slot2_option_mark = option_mark
+            self.slot2_direction = direction
 
         return sess.id
 
@@ -499,16 +526,22 @@ class HedgeEngine:
                 slot1_cfg = self.get_role_strategy_config(db, "1st Trader")
                 slot2_cfg = self.get_role_strategy_config(db, "2nd Trader")
 
-                # Live options mark price feed polling for active telemetry
+                # Live options mark price feed polling for active telemetry (both Bullish PUT & Bearish CALL)
                 if slot1_cfg:
-                    s1_strk, s1_mark, _, _ = await self.find_nearest_itm_option(futures_mark, slot1_cfg.direction or "Bullish")
-                    self.preview_slot1_strike = s1_strk
-                    self.preview_slot1_option_mark = s1_mark
+                    put_strk, put_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bullish")
+                    call_strk, call_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bearish")
+                    self.preview_slot1_put_strike = put_strk
+                    self.preview_slot1_put_mark = put_mark
+                    self.preview_slot1_call_strike = call_strk
+                    self.preview_slot1_call_mark = call_mark
 
                 if slot2_cfg:
-                    s2_strk, s2_mark, _, _ = await self.find_nearest_itm_option(futures_mark, slot2_cfg.direction or "Bearish")
-                    self.preview_slot2_strike = s2_strk
-                    self.preview_slot2_option_mark = s2_mark
+                    put_strk, put_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bullish")
+                    call_strk, call_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bearish")
+                    self.preview_slot2_put_strike = put_strk
+                    self.preview_slot2_put_mark = put_mark
+                    self.preview_slot2_call_strike = call_strk
+                    self.preview_slot2_call_mark = call_mark
 
                 w_start_h = slot1_cfg.trade_start_h if slot1_cfg else 6
                 w_start_m = slot1_cfg.trade_start_m if slot1_cfg else 0

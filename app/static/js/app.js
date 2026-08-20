@@ -346,6 +346,15 @@ async function fetchSnapshot() {
                 setTextContent(document.getElementById("hedge-squareoff-timer"), `${hedgeLM.sq_end || '11:30'} AM Sharp`);
                 setTextContent(document.getElementById("hedge-live-time"), hedgeLM.server_time || "00:00:00");
 
+                // Helper to update pass/exceeded badges
+                const formatRuleCheck = (elId, isValid) => {
+                    const el = document.getElementById(elId);
+                    if (el) {
+                        setTextContent(el, isValid ? "✅ Pass" : "❌ Exceeded");
+                        el.style.color = isValid ? "var(--accent-emerald)" : "var(--accent-rose)";
+                    }
+                };
+
                 // 1st Trader (Slot 1)
                 const slot1 = hedgeLM.slot1 || {};
                 const slot1Badge = document.getElementById("hedge-slot1-status");
@@ -353,21 +362,24 @@ async function fetchSnapshot() {
                     setTextContent(slot1Badge, slot1.status || "IDLE");
                     slot1Badge.className = `badge ${slot1.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
                 }
-                let slot1DirText = "Auto-Match (Evaluates Both Bullish & Bearish)";
-                if (slot1.direction === "Bullish") {
-                    slot1DirText = "Bullish (BUY PUT + LONG Fut)";
-                } else if (slot1.direction === "Bearish") {
-                    slot1DirText = "Bearish (BUY CALL + SHORT Fut)";
-                }
-                setTextContent(document.getElementById("hedge-slot1-dir"), slot1DirText);
                 setTextContent(document.getElementById("hedge-slot1-qty"), `${slot1.qty || 1.0} BTC`);
                 setTextContent(document.getElementById("hedge-slot1-window-range"), `${slot1.window_start || '06:00'} - ${slot1.window_end || '07:30'}`);
                 setTextContent(document.getElementById("hedge-slot1-open-cd"), slot1.open_countdown || "00:00:00");
                 setTextContent(document.getElementById("hedge-slot1-sq-cd"), `${slot1.sq_end || '11:30'} AM (${slot1.squareoff_countdown || '00:00:00'})`);
-                setTextContent(document.getElementById("hedge-slot1-strike"), `$${(slot1.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
-                setTextContent(document.getElementById("hedge-slot1-opt-mark"), `$${(slot1.option_mark || 0).toFixed(2)}`);
-                setTextContent(document.getElementById("hedge-slot1-fut-entry"), slot1.futures_entry ? `$${slot1.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
-                setTextContent(document.getElementById("hedge-slot1-fut-tp"), slot1.futures_tp ? `$${slot1.futures_tp.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
+
+                const s1Bull = slot1.bullish || {};
+                setTextContent(document.getElementById("hedge-slot1-bull-strike"), `$${(s1Bull.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} PUT`);
+                setTextContent(document.getElementById("hedge-slot1-bull-mark"), `$${(s1Bull.option_mark || 0).toFixed(2)}`);
+                setTextContent(document.getElementById("hedge-slot1-bull-tp"), `$${(s1Bull.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                formatRuleCheck("hedge-slot1-bull-rule-b", s1Bull.rule_b_valid);
+                formatRuleCheck("hedge-slot1-bull-spend", s1Bull.max_spend_valid);
+
+                const s1Bear = slot1.bearish || {};
+                setTextContent(document.getElementById("hedge-slot1-bear-strike"), `$${(s1Bear.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} CALL`);
+                setTextContent(document.getElementById("hedge-slot1-bear-mark"), `$${(s1Bear.option_mark || 0).toFixed(2)}`);
+                setTextContent(document.getElementById("hedge-slot1-bear-tp"), `$${(s1Bear.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                formatRuleCheck("hedge-slot1-bear-rule-b", s1Bear.rule_b_valid);
+                formatRuleCheck("hedge-slot1-bear-spend", s1Bear.max_spend_valid);
 
                 // 2nd Trader (Slot 2)
                 const slot2 = hedgeLM.slot2 || {};
@@ -376,21 +388,24 @@ async function fetchSnapshot() {
                     setTextContent(slot2Badge, slot2.status || "IDLE");
                     slot2Badge.className = `badge ${slot2.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
                 }
-                let slot2DirText = "Auto-Match (Evaluates Both Bullish & Bearish)";
-                if (slot2.direction === "Bullish") {
-                    slot2DirText = "Bullish (BUY PUT + LONG Fut)";
-                } else if (slot2.direction === "Bearish") {
-                    slot2DirText = "Bearish (BUY CALL + SHORT Fut)";
-                }
-                setTextContent(document.getElementById("hedge-slot2-dir"), slot2DirText);
                 setTextContent(document.getElementById("hedge-slot2-qty"), `${slot2.qty || 1.0} BTC`);
-                setTextContent(document.getElementById("hedge-slot2-window-range"), `${slot2.window_start || '06:00'} - ${slot2.window_end || '07:30'}`);
+                setTextContent(document.getElementById("hedge-slot2-window-range"), `${slot2.window_start || '07:00'} - ${slot2.window_end || '11:00'}`);
                 setTextContent(document.getElementById("hedge-slot2-open-cd"), slot2.open_countdown || "00:00:00");
                 setTextContent(document.getElementById("hedge-slot2-sq-cd"), `${slot2.sq_end || '11:30'} AM (${slot2.squareoff_countdown || '00:00:00'})`);
-                setTextContent(document.getElementById("hedge-slot2-strike"), `$${(slot2.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
-                setTextContent(document.getElementById("hedge-slot2-opt-mark"), `$${(slot2.option_mark || 0).toFixed(2)}`);
-                setTextContent(document.getElementById("hedge-slot2-fut-entry"), slot2.futures_entry ? `$${slot2.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
-                setTextContent(document.getElementById("hedge-slot2-fut-tp"), slot2.futures_tp ? `$${slot2.futures_tp.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
+
+                const s2Bull = slot2.bullish || {};
+                setTextContent(document.getElementById("hedge-slot2-bull-strike"), `$${(s2Bull.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} PUT`);
+                setTextContent(document.getElementById("hedge-slot2-bull-mark"), `$${(s2Bull.option_mark || 0).toFixed(2)}`);
+                setTextContent(document.getElementById("hedge-slot2-bull-tp"), `$${(s2Bull.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                formatRuleCheck("hedge-slot2-bull-rule-b", s2Bull.rule_b_valid);
+                formatRuleCheck("hedge-slot2-bull-spend", s2Bull.max_spend_valid);
+
+                const s2Bear = slot2.bearish || {};
+                setTextContent(document.getElementById("hedge-slot2-bear-strike"), `$${(s2Bear.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} CALL`);
+                setTextContent(document.getElementById("hedge-slot2-bear-mark"), `$${(s2Bear.option_mark || 0).toFixed(2)}`);
+                setTextContent(document.getElementById("hedge-slot2-bear-tp"), `$${(s2Bear.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                formatRuleCheck("hedge-slot2-bear-rule-b", s2Bear.rule_b_valid);
+                formatRuleCheck("hedge-slot2-bear-spend", s2Bear.max_spend_valid);
 
                 // Condition Badges
                 const updateCond = (elId, isValid, validTxt = "✅ Active", invalidTxt = "❌ Inactive") => {
