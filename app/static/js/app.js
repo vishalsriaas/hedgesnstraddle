@@ -727,7 +727,7 @@ async function saveStraddleConfig(e) {
 
 const HEDGE_FIELDS = [
     "RUNTIME_MODE", "ENGINE_ENABLED", "PAPER_TRADING_ENABLED", "GLOBAL_PAUSE",
-    "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC"
+    "SKIP_WEEKENDS", "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC"
 ];
 
 async function loadHedgeConfig() {

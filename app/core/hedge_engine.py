@@ -36,18 +36,25 @@ def get_session_relative_minutes(time_str: str) -> int:
     except Exception:
         return 0
 
+def get_current_binance_session_dt() -> datetime:
+    now_ist = datetime.now(ist)
+    if now_ist.time() >= datetime.strptime("13:30:00", "%H:%M:%S").time():
+        return now_ist + timedelta(days=1)
+    else:
+        return now_ist
+
 def get_current_binance_session_date() -> str:
     """
     Returns the target Binance Expiry Date Key (YYMMDD) for the active trading session.
     If server time is >= 13:30:00 IST, the trading session targets tomorrow's 13:30 expiry date.
     If server time is < 13:30:00 IST, the trading session targets today's 13:30 expiry date.
     """
-    now_ist = datetime.now(ist)
-    if now_ist.time() >= datetime.strptime("13:30:00", "%H:%M:%S").time():
-        session_dt = now_ist + timedelta(days=1)
-    else:
-        session_dt = now_ist
-    return session_dt.strftime("%y%m%d")
+    return get_current_binance_session_dt().strftime("%y%m%d")
+
+def is_weekend_session() -> bool:
+    """Returns True if the target Binance Expiry Date falls on Saturday (5) or Sunday (6)."""
+    target_dt = get_current_binance_session_dt()
+    return target_dt.weekday() in [5, 6]
 
 class HedgeEngine:
     def __init__(self):
@@ -594,6 +601,13 @@ class HedgeEngine:
 
                 if not bot_enabled:
                     self.state = "DISABLED"
+                    db.close()
+                    await asyncio.sleep(2.0)
+                    continue
+
+                skip_weekends = cfg.get("SKIP_WEEKENDS", "1") == "1"
+                if skip_weekends and is_weekend_session():
+                    self.state = "SKIP_WEEKEND"
                     db.close()
                     await asyncio.sleep(2.0)
                     continue
