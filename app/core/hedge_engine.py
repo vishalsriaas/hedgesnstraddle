@@ -617,90 +617,95 @@ class HedgeEngine:
     async def execute_squareoff(self, db: Session, reason: str = "11:30 AM Universal Squareoff"):
         """Forces 11:30 AM universal market squareoff for all open hedge slots."""
         logger.info("Executing Hedge Universal Squareoff: %s", reason)
-        cfg = self.load_config(db)
         now_ist = datetime.now(ist).replace(tzinfo=None)
 
         futures_mark = await get_btc_futures_mark_price()
         opts_list = await get_btc_options_mark_prices()
         opts_dict = {item.get("symbol", ""): float(item.get("markPrice", 0.0)) for item in opts_list if isinstance(item, dict)}
-        open_positions = db.query(HedgeOpenPosition).all()
 
-        total_realized_pnl = 0.0
+        # Query all active or square-off pending sessions
+        open_sessions = db.query(HedgeSession).filter(HedgeSession.status.in_(["Open", "Manual Square-off"])).all()
 
-        for pos in open_positions:
-            qty = pos.qty
-            if "FUTURES" in pos.symbol:
-                if pos.side == "LONG":
-                    pnl = (futures_mark - pos.entry_price) * qty
-                else:
-                    pnl = (pos.entry_price - futures_mark) * qty
-                
-                close_order = HedgeTradeOrder(
-                    session_id=pos.session_id,
-                    symbol=pos.symbol,
-                    side="SELL" if pos.side == "LONG" else "BUY",
-                    trader_leg=self.active_role,
-                    order_type="MARKET",
-                    qty=qty,
-                    price=futures_mark,
-                    status="FILLED",
-                    created_at=now_ist
-                )
-                db.add(close_order)
-            else:
-                # Option close at live market price or intrinsic valuation fallback
-                live_opt_price = opts_dict.get(pos.symbol, 0.0)
-                if live_opt_price <= 0.0:
-                    try:
-                        parts = pos.symbol.split("-")
-                        strike_val = float(parts[2])
-                        is_put = parts[3] == "P"
-                        if is_put:
-                            live_opt_price = max(0.0, strike_val - futures_mark)
-                        else:
-                            live_opt_price = max(0.0, futures_mark - strike_val)
-                    except Exception:
-                        live_opt_price = pos.entry_price
-
-                pnl = (live_opt_price - pos.entry_price) * qty
-                close_order = HedgeTradeOrder(
-                    session_id=pos.session_id,
-                    symbol=pos.symbol,
-                    side="SELL",
-                    trader_leg=self.active_role,
-                    order_type="MARKET",
-                    qty=qty,
-                    price=round(live_opt_price, 2),
-                    status="FILLED",
-                    created_at=now_ist
-                )
-                db.add(close_order)
-
-            total_realized_pnl += pnl
-            db.delete(pos)
-
-        open_sessions = db.query(HedgeSession).filter(HedgeSession.status == "Open").all()
         for sess in open_sessions:
-            sess.status = "Completed"
+            positions = db.query(HedgeOpenPosition).filter(HedgeOpenPosition.session_id == sess.id).all()
+            session_pnl = 0.0
+
+            for pos in positions:
+                qty = pos.qty
+                if "FUTURES" in pos.symbol:
+                    if pos.side == "LONG":
+                        pnl = (futures_mark - pos.entry_price) * qty
+                        sess.bull_exit = futures_mark
+                    else:
+                        pnl = (pos.entry_price - futures_mark) * qty
+                        sess.bear_exit = futures_mark
+                    
+                    close_order = HedgeTradeOrder(
+                        session_id=sess.id,
+                        symbol=pos.symbol,
+                        side="SELL" if pos.side == "LONG" else "BUY",
+                        trader_leg=self.active_role,
+                        order_type="MARKET",
+                        qty=qty,
+                        price=futures_mark,
+                        status="FILLED",
+                        created_at=now_ist
+                    )
+                    db.add(close_order)
+                else:
+                    # Option close at live market price or intrinsic valuation fallback
+                    live_opt_price = opts_dict.get(pos.symbol, 0.0)
+                    if live_opt_price <= 0.0:
+                        try:
+                            parts = pos.symbol.split("-")
+                            strike_val = float(parts[2])
+                            is_put = parts[3] == "P"
+                            if is_put:
+                                live_opt_price = max(0.0, strike_val - futures_mark)
+                            else:
+                                live_opt_price = max(0.0, futures_mark - strike_val)
+                        except Exception:
+                            live_opt_price = pos.entry_price
+
+                    pnl = (live_opt_price - pos.entry_price) * qty
+                    close_order = HedgeTradeOrder(
+                        session_id=sess.id,
+                        symbol=pos.symbol,
+                        side="SELL",
+                        trader_leg=self.active_role,
+                        order_type="MARKET",
+                        qty=qty,
+                        price=round(live_opt_price, 2),
+                        status="FILLED",
+                        created_at=now_ist
+                    )
+                    db.add(close_order)
+
+                session_pnl += pnl
+                db.delete(pos)
+
+            sess.status = "Manual Square-off" if ("Emergency" in reason or "Manual" in reason) else "Completed"
             sess.exit_reason = reason
-            sess.realized_pnl = total_realized_pnl
+            sess.realized_pnl = round(session_pnl, 2)
 
-        # Update Ledger
-        cash_item = db.query(HedgeConfig).filter(HedgeConfig.key == "PAPER_WALLET_USDT").first()
-        old_cash = float(cash_item.value) if cash_item else 100000.0
-        new_cash = old_cash + total_realized_pnl
-        if cash_item:
-            cash_item.value = str(new_cash)
+            # Update Paper Wallet Cash Balance for this session
+            cash_item = db.query(HedgeConfig).filter(HedgeConfig.key == "PAPER_WALLET_USDT").first()
+            old_cash = float(cash_item.value) if cash_item else 100000.0
+            new_cash = old_cash + session_pnl
+            if cash_item:
+                cash_item.value = str(new_cash)
+            else:
+                db.add(HedgeConfig(key="PAPER_WALLET_USDT", value=str(new_cash)))
 
-        ledger = HedgePaperLedgerEntry(
-            session_id=self.slot1_session_id or self.slot2_session_id,
-            entry_type="SQUAREOFF_SETTLEMENT",
-            amount=total_realized_pnl,
-            balance_after=new_cash,
-            detail=f"Hedge Squareoff Settlement ({reason}) - Net PnL: ${total_realized_pnl:.2f}",
-            created_at=now_ist
-        )
-        db.add(ledger)
+            ledger = HedgePaperLedgerEntry(
+                session_id=sess.id,
+                entry_type="SESSION_SQUAREOFF",
+                amount=round(session_pnl, 2),
+                balance_after=round(new_cash, 2),
+                detail=f"Session #{sess.id} Square-Off [{reason}] Realized PnL: ${session_pnl:+.2f}",
+                created_at=now_ist
+            )
+            db.add(ledger)
 
         db.commit()
 

@@ -129,13 +129,6 @@ def trigger_hedge_squareoff(
 ):
     logger_msg = f"User {current_user.email} triggered EMERGENCY SQUARE-OFF for Hedge Trader"
     hedge_engine.state = "SQUAREOFF"
-    
-    active_session = db.query(HedgeSession).filter(HedgeSession.status == "Open").first()
-    if active_session:
-        active_session.status = "Manual Square-off"
-        active_session.exit_reason = f"Emergency Square-Off triggered by {current_user.email}"
-        db.commit()
-
     return {"status": "SUCCESS", "message": logger_msg}
 
 @router.post("/hedge/reset")
