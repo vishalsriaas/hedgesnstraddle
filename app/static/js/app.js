@@ -732,7 +732,7 @@ async function loadHedgeConfig() {
                             <span class="badge ${s.enabled ? 'badge-success' : 'badge-danger'}">${s.enabled ? 'Role Active' : 'Role Disabled'}</span>
                         </div>
 
-                        <form onsubmit="saveRoleStrategyConfig(event, ${s.id}, '${s.strategy_name}')" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+                        <form onsubmit="saveRoleStrategyConfig(event, ${s.id}, '${s.strategy_name}'); return false;" style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
                             <div class="form-group">
                                 <label>Trade Window Open (HH:MM)</label>
                                 <input type="text" id="role_${s.id}_start" value="${startStr}" placeholder="05:00" style="font-family: var(--font-mono); font-size: 14px;">
@@ -764,7 +764,7 @@ async function loadHedgeConfig() {
                             </div>
 
                             <div style="grid-column: 1 / -1; margin-top: 12px; text-align: right;">
-                                <button type="submit" class="btn-primary" style="font-size: 13px; padding: 10px 22px; width: 100%; border-radius: 6px;">💾 Save ${s.strategy_name} Role Settings</button>
+                                <button type="button" onclick="saveRoleStrategyConfig(event, ${s.id}, '${s.strategy_name}')" class="btn-primary" style="font-size: 13px; padding: 10px 22px; width: 100%; border-radius: 6px;">💾 Save ${s.strategy_name} Role Settings</button>
                             </div>
                         </form>
                     </div>

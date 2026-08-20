@@ -706,7 +706,7 @@
         <div id="view-hedge-config" class="content-view" style="display: none;">
             <div class="glass-panel">
                 <h3 style="font-size: 18px; margin-bottom: 24px;">Hedge Trader Settings (Global Parameters)</h3>
-                <form id="hedge-config-form">
+                <form id="hedge-config-form" onsubmit="saveHedgeConfig(event); return false;">
                     <div class="form-grid" style="margin-bottom: 24px;">
                         <div class="form-group">
                             <label>Runtime Mode</label>
@@ -743,7 +743,7 @@
                     </div>
 
                     <div style="margin-top: 28px; text-align: right;">
-                        <button type="submit" class="btn-primary">💾 Save Global Hedge Settings</button>
+                        <button type="button" onclick="saveHedgeConfig(event)" class="btn-primary">💾 Save Global Hedge Settings</button>
                     </div>
                 </form>
             </div>
