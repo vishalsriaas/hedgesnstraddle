@@ -357,8 +357,6 @@ async function fetchSnapshot() {
 
                 // 1st Trader (Slot 1)
                 const slot1 = hedgeLM.slot1 || {};
-                // 1st Trader (Slot 1)
-                const slot1 = hedgeLM.slot1 || {};
                 const slot1Badge = document.getElementById("hedge-slot1-status");
                 if (slot1Badge) {
                     setTextContent(slot1Badge, slot1.status || "IDLE");
