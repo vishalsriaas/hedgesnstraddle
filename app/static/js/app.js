@@ -544,6 +544,36 @@ async function fetchSnapshot() {
             } else if (hedgePositionsViewBody) {
                 setInnerHTML(hedgePositionsViewBody, '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>');
             }
+
+            // Render Hedge Trade Orders & Executions Table
+            const hedgeOrdersViewBody = document.getElementById("hedge-orders-view-body");
+            if (data.hedge.orders && data.hedge.orders.length > 0) {
+                const hOrdersHtml = data.hedge.orders.map(o => {
+                    let statusClass = "badge-info";
+                    if (o.status === "FILLED") statusClass = "badge-success";
+                    else if (o.status === "PENDING") statusClass = "badge-warning";
+                    else if (o.status === "CANCELLED" || o.status === "EXPIRED") statusClass = "badge-danger";
+
+                    const timeStr = formatDisplayTime(o.created_at);
+
+                    return `
+                    <tr>
+                        <td><b>#${o.id}</b></td>
+                        <td>Session #${o.session_id}</td>
+                        <td><code>${o.symbol}</code></td>
+                        <td><span class="badge ${o.side === 'BUY' ? 'badge-success' : 'badge-danger'}">${o.side}</span></td>
+                        <td><span class="badge badge-info">${o.trader_leg || 'Hedge'}</span></td>
+                        <td>${o.qty}</td>
+                        <td>$${(o.price || 0).toFixed(2)}</td>
+                        <td><span class="badge ${statusClass}">${o.status}</span></td>
+                        <td style="color: var(--text-muted); font-size: 12px;">${timeStr}</td>
+                    </tr>
+                    `;
+                }).join("");
+                setInnerHTML(hedgeOrdersViewBody, hOrdersHtml);
+            } else if (hedgeOrdersViewBody) {
+                setInnerHTML(hedgeOrdersViewBody, '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No hedge trade orders submitted yet.</td></tr>');
+            }
         }
     } catch (err) {
         console.error("Error fetching snapshot:", err);

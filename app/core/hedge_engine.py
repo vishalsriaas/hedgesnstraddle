@@ -144,7 +144,7 @@ class HedgeEngine:
                 "sq_end": sq1_end,
                 "open_countdown": slot1_open_cd,
                 "squareoff_countdown": slot1_sq_cd,
-                "status": "Active" if self.slot1_session_id else "Idle",
+                "status": "Active" if self.slot1_session_id else ("Completed" if getattr(self, "slot1_completed", False) else "Idle"),
                 "filled_direction": getattr(self, "slot1_direction", None) if self.slot1_session_id else None,
                 "filled_strike": self.slot1_strike or 0.0,
                 "filled_opt_mark": self.slot1_option_mark or 0.0,
@@ -175,7 +175,7 @@ class HedgeEngine:
                 "sq_end": sq2_end,
                 "open_countdown": slot2_open_cd,
                 "squareoff_countdown": slot2_sq_cd,
-                "status": "Active" if self.slot2_session_id else "Idle",
+                "status": "Active" if self.slot2_session_id else ("Completed" if getattr(self, "slot2_completed", False) else "Idle"),
                 "filled_direction": getattr(self, "slot2_direction", None) if self.slot2_session_id else None,
                 "filled_strike": self.slot2_strike or 0.0,
                 "filled_opt_mark": self.slot2_option_mark or 0.0,
@@ -494,6 +494,11 @@ class HedgeEngine:
 
         db.commit()
 
+        if self.slot1_session_id:
+            self.slot1_completed = True
+        if self.slot2_session_id:
+            self.slot2_completed = True
+
         self.slot1_session_id = None
         self.slot2_session_id = None
         self.slot1_strike = None
@@ -560,9 +565,15 @@ class HedgeEngine:
                 max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
 
                 # 1. State Transition: Entry Window Active
-                if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE", "SQUAREOFF", "COMPLETED"]:
+                if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE"]:
                     self.state = "ENTRY_WINDOW"
                     logger.info("Entering Hedge Entry Window (%02d:%02d - %02d:%02d)", w_start_h, w_start_m, w_end_h, w_end_m)
+                elif now_rel > sq_end_rel:
+                    # Reset completed flags outside session window for next daily cycle
+                    self.slot1_completed = False
+                    self.slot2_completed = False
+                    if self.state in ["COMPLETED", "SQUAREOFF"]:
+                        self.state = "IDLE"
 
                 # 2. Phase 1: Slot 1 & Slot 2 Entry Evaluation
                 if self.state == "ENTRY_WINDOW":

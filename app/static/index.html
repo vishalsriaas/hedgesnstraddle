@@ -764,19 +764,20 @@
                             <th>Bull Exit</th>
                             <th>Bear Exit</th>
                             <th>Realized PnL</th>
+                            <th>Exit Reason</th>
                         </tr>
                     </thead>
                     <tbody id="hedge-sessions-view-body">
-                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No records found.</td></tr>
+                        <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No records found.</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- VIEW 10: HEDGE OPEN POSITIONS -->
+        <!-- VIEW 10: HEDGE OPEN POSITIONS & ORDERS -->
         <div id="view-hedge-positions" class="content-view" style="display: none;">
-            <div class="glass-panel">
-                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Open Positions & Orders</h3>
+            <div class="glass-panel" style="margin-bottom: 24px;">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Open Positions</h3>
                 <table>
                     <thead>
                         <tr>
@@ -791,6 +792,28 @@
                     </thead>
                     <tbody id="hedge-positions-view-body">
                         <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="glass-panel">
+                <h3 style="font-size: 18px; margin-bottom: 16px;">Hedge Trade Orders & Executions</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Session</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Trader Leg</th>
+                            <th>Qty</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hedge-orders-view-body">
+                        <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No hedge trade orders submitted yet.</td></tr>
                     </tbody>
                 </table>
             </div>
