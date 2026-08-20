@@ -302,6 +302,9 @@ class HedgeEngine:
         Executes atomic slot trade: BUY Option @ option_mark + OPEN Futures @ futures_mark.
         Sets Futures TP = futures_entry ± option_mark.
         """
+        qty = role_config.contract_qty
+        max_premium = role_config.max_premium
+
         # Determine direction: Check if explicit (Bullish/Bearish) or Auto (evaluate both)
         pref_direction = role_config.direction or "Auto"
         if pref_direction in ["Bullish", "Bearish"]:
