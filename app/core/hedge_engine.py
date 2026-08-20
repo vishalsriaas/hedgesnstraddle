@@ -109,23 +109,29 @@ class HedgeEngine:
         max_premium = slot1_cfg.max_premium if slot1_cfg else 280.0
         max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
 
-        cond_rule_a_valid = True
-        cond_rule_b_valid = ((self.slot1_option_mark or 150.0) <= max_premium)
-        cond_rule_c_valid = True
-        if self.slot1_strike is not None and self.slot2_strike is not None:
-            cond_rule_c_valid = (self.slot2_strike >= self.slot1_strike)
-
-        cond_max_spend_valid = ((self.slot1_option_mark or 150.0) * (slot1_cfg.contract_qty if slot1_cfg else 1.0) <= max_option_spend)
-
         slot1_dir = slot1_cfg.direction if slot1_cfg else "Bullish"
         slot1_qty = slot1_cfg.contract_qty if slot1_cfg else 1.0
-        slot1_fut_entry = self.last_futures_mark
-        slot1_tp = (slot1_fut_entry + (self.slot1_option_mark or 150.0)) if slot1_dir == "Bullish" else (slot1_fut_entry - (self.slot1_option_mark or 150.0))
+        slot1_strk = self.slot1_strike if self.slot1_session_id else getattr(self, "preview_slot1_strike", (round(self.last_futures_mark / 250.0) * 250.0))
+        slot1_opt_mark = self.slot1_option_mark if self.slot1_session_id else getattr(self, "preview_slot1_option_mark", 0.0)
 
         slot2_dir = slot2_cfg.direction if slot2_cfg else "Bearish"
         slot2_qty = slot2_cfg.contract_qty if slot2_cfg else 1.0
+        slot2_strk = self.slot2_strike if self.slot2_session_id else getattr(self, "preview_slot2_strike", (round(self.last_futures_mark / 250.0) * 250.0))
+        slot2_opt_mark = self.slot2_option_mark if self.slot2_session_id else getattr(self, "preview_slot2_option_mark", 0.0)
+
+        cond_rule_a_valid = True
+        cond_rule_b_valid = (slot1_opt_mark <= max_premium) if slot1_opt_mark > 0 else True
+        cond_rule_c_valid = True
+        if slot1_strk and slot2_strk:
+            cond_rule_c_valid = (slot2_strk >= slot1_strk)
+
+        cond_max_spend_valid = (slot1_opt_mark * slot1_qty <= max_option_spend) if slot1_opt_mark > 0 else True
+
+        slot1_fut_entry = self.last_futures_mark
+        slot1_tp = (slot1_fut_entry + slot1_opt_mark) if slot1_dir == "Bullish" else (slot1_fut_entry - slot1_opt_mark)
+
         slot2_fut_entry = self.last_futures_mark
-        slot2_tp = (slot2_fut_entry + (self.slot2_option_mark or 150.0)) if slot2_dir == "Bullish" else (slot2_fut_entry - (self.slot2_option_mark or 150.0))
+        slot2_tp = (slot2_fut_entry + slot2_opt_mark) if slot2_dir == "Bullish" else (slot2_fut_entry - slot2_opt_mark)
 
         hedge_wallet_val = float(cfg.get("PAPER_WALLET_USDT", "100000.0"))
 
@@ -146,8 +152,8 @@ class HedgeEngine:
                 "sq_end": sq1_end,
                 "open_countdown": slot1_open_cd,
                 "squareoff_countdown": slot1_sq_cd,
-                "strike": self.slot1_strike or (round(self.last_futures_mark / 250.0) * 250.0),
-                "option_mark": self.slot1_option_mark or 150.0,
+                "strike": slot1_strk,
+                "option_mark": slot1_opt_mark,
                 "futures_entry": slot1_fut_entry if self.slot1_session_id else 0.0,
                 "futures_tp": slot1_tp if self.slot1_session_id else 0.0,
                 "status": "Active" if self.slot1_session_id else "Idle"
@@ -161,8 +167,8 @@ class HedgeEngine:
                 "sq_end": sq2_end,
                 "open_countdown": slot2_open_cd,
                 "squareoff_countdown": slot2_sq_cd,
-                "strike": self.slot2_strike or (round(self.last_futures_mark / 250.0) * 250.0),
-                "option_mark": self.slot2_option_mark or 150.0,
+                "strike": slot2_strk,
+                "option_mark": slot2_opt_mark,
                 "futures_entry": slot2_fut_entry if self.slot2_session_id else 0.0,
                 "futures_tp": slot2_tp if self.slot2_session_id else 0.0,
                 "status": "Active" if self.slot2_session_id else "Idle"
@@ -477,6 +483,17 @@ class HedgeEngine:
 
                 slot1_cfg = self.get_role_strategy_config(db, "1st Trader")
                 slot2_cfg = self.get_role_strategy_config(db, "2nd Trader")
+
+                # Live options mark price feed polling for active telemetry
+                if slot1_cfg:
+                    s1_strk, s1_mark, _, _ = await self.find_nearest_itm_option(futures_mark, slot1_cfg.direction or "Bullish")
+                    self.preview_slot1_strike = s1_strk
+                    self.preview_slot1_option_mark = s1_mark
+
+                if slot2_cfg:
+                    s2_strk, s2_mark, _, _ = await self.find_nearest_itm_option(futures_mark, slot2_cfg.direction or "Bearish")
+                    self.preview_slot2_strike = s2_strk
+                    self.preview_slot2_option_mark = s2_mark
 
                 w_start_h = slot1_cfg.trade_start_h if slot1_cfg else 6
                 w_start_m = slot1_cfg.trade_start_m if slot1_cfg else 0
