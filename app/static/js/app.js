@@ -336,7 +336,8 @@ async function fetchSnapshot() {
             if (hedgeLM) {
                 setTextContent(document.getElementById("hedge-hero-spot"), `$${btcSpot.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 setTextContent(document.getElementById("hedge-hero-active-role"), hedgeLM.active_role || "1st Trader");
-                setTextContent(document.getElementById("hedge-hero-wallet"), `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                const hedgeWalletVal = hedgeLM.hedge_paper_wallet_usdt || 100000.0;
+                setTextContent(document.getElementById("hedge-hero-wallet"), `$${hedgeWalletVal.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 setTextContent(document.getElementById("hedge-hero-spend-limit"), `$${hedgeLM.max_option_spend || 400}`);
 
                 setTextContent(document.getElementById("hedge-time-to-open"), `${hedgeLM.window_start || '06:00'} - ${hedgeLM.window_end || '07:30'}`);

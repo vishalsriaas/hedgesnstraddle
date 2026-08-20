@@ -96,6 +96,8 @@ class HedgeEngine:
         slot2_fut_entry = self.last_futures_mark
         slot2_tp = (slot2_fut_entry + (self.slot2_option_mark or 150.0)) if slot2_dir == "Bullish" else (slot2_fut_entry - (self.slot2_option_mark or 150.0))
 
+        hedge_wallet_val = float(cfg.get("PAPER_WALLET_USDT", "100000.0"))
+
         return {
             "state": self.state,
             "active_role": self.active_role,
@@ -106,6 +108,7 @@ class HedgeEngine:
             "window_end": window_end,
             "sq_end": sq_end,
             "max_option_spend": max_option_spend,
+            "hedge_paper_wallet_usdt": hedge_wallet_val,
             "slot1": {
                 "role": "1st Trader",
                 "direction": slot1_dir,
