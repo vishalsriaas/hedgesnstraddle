@@ -138,6 +138,39 @@ def trigger_hedge_squareoff(
 
     return {"status": "SUCCESS", "message": logger_msg}
 
+@router.post("/hedge/reset")
+def trigger_hedge_reset(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Clears all Hedge sessions, orders, positions, fills, and paper ledger entries to start fresh without affecting Straddle."""
+    from app.models.schema import HedgeSession, HedgeOpenPosition, HedgeTradeOrder, HedgeFill, HedgePaperLedgerEntry, HedgeSessionEvent
+
+    db.query(HedgeSessionEvent).delete()
+    db.query(HedgePaperLedgerEntry).delete()
+    db.query(HedgeFill).delete()
+    db.query(HedgeTradeOrder).delete()
+    db.query(HedgeOpenPosition).delete()
+    db.query(HedgeSession).delete()
+
+    hw = db.query(HedgeConfig).filter(HedgeConfig.key == "PAPER_WALLET_USDT").first()
+    if hw:
+        hw.value = "100000.0"
+    else:
+        db.add(HedgeConfig(key="PAPER_WALLET_USDT", value="100000.0"))
+
+    db.commit()
+
+    hedge_engine.slot1_session_id = None
+    hedge_engine.slot2_session_id = None
+    hedge_engine.slot1_strike = None
+    hedge_engine.slot2_strike = None
+    hedge_engine.slot1_completed = False
+    hedge_engine.slot2_completed = False
+    hedge_engine.state = "IDLE"
+
+    return {"status": "SUCCESS", "message": "Hedge Trader records cleared for a fresh start. Straddle Panel remains untouched."}
+
 @router.websocket("/ws/live")
 async def websocket_live_feed(websocket: WebSocket):
     await websocket.accept()
