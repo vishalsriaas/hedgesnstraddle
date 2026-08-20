@@ -318,7 +318,6 @@
                     <span class="tile-lbl">HEDGE SESSION TIME LEFT</span>
                     <div class="tile-val" id="hedge-time-left" style="font-size: 16px; color: var(--accent-emerald);">00:00:00</div>
                     <div class="tile-sub">Active Session Clock</div>
-                </div>
                 <div class="hero-tile">
                     <span class="tile-lbl">SQUAREOFF TIMER</span>
                     <div class="tile-val" id="hedge-squareoff-timer" style="font-size: 16px; color: var(--accent-rose);">11:30 AM Sharp</div>
@@ -329,13 +328,33 @@
             <!-- Dual Trader Cards (1st Trader vs 2nd Trader) -->
             <div class="hero-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 24px;">
                 <!-- 1st Trader (Priority 1) Card -->
-                <div class="hero-tile" style="border-top: 3px solid var(--brand-indigo);">
+                <div class="hero-tile" style="border-top: 3px solid var(--brand-blue);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
                         <div>
                             <span style="font-size: 13px; font-weight: 700; color: #fff; text-transform: uppercase;">1st Trader (Priority 1)</span>
                             <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;" id="hedge-slot1-qty">1.0 BTC</span>
+                            <span class="badge badge-info" id="hedge-slot1-tp-rank" style="margin-left: 6px; display: none;">🥇 1st TP Trader</span>
                         </div>
-                        <span class="badge badge-warning" id="hedge-slot1-status">IDLE</span>
+                        <span class="badge badge-success" id="hedge-slot1-status">ACTIVE</span>
+                    </div>
+
+                    <!-- Active Position Telemetry Banner (Visible when ACTIVE) -->
+                    <div id="hedge-slot1-active-banner" style="display: none; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); padding: 10px; border-radius: 6px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 12px;">
+                        <div style="font-size: 11px; font-weight: 700; color: var(--accent-emerald); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                            <span id="hedge-slot1-active-dir-label">🟢 BULLISH (BUY PUT + LONG)</span>
+                            <span id="hedge-slot1-active-pnl" style="color: var(--accent-emerald); font-size: 12px;">+$0.00 (+0.00%)</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+                            <div><span style="color: var(--text-muted);">Fut Entry:</span> <strong id="hedge-slot1-active-fut-entry" style="color: #fff;">$0.00</strong></div>
+                            <div><span style="color: var(--text-muted);">Target TP:</span> <strong id="hedge-slot1-active-fut-tp" style="color: var(--accent-emerald);">$0.00</strong></div>
+                            <div><span style="color: var(--text-muted);">Opt Entry:</span> <strong id="hedge-slot1-active-opt-mark" style="color: var(--accent-amber);">$0.00</strong></div>
+                            <div><span style="color: var(--text-muted);">ITM Strike:</span> <strong id="hedge-slot1-active-strike" style="color: #fff;">$0.00</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Idle / Rejection Reason Box (Visible when IDLE) -->
+                    <div id="hedge-slot1-idle-reason-box" style="background: rgba(244, 63, 94, 0.05); border: 1px dashed rgba(244, 63, 94, 0.3); padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 11px; font-family: var(--font-mono); color: var(--accent-rose);">
+                        <span>🔍 Reason Not Trading:</span> <strong id="hedge-slot1-idle-reason-txt" style="color: #fff;">Outside Entry Window Range</strong>
                     </div>
 
                     <!-- Timers Row -->
@@ -375,8 +394,28 @@
                         <div>
                             <span style="font-size: 13px; font-weight: 700; color: #fff; text-transform: uppercase;">2nd Trader (Priority 2)</span>
                             <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;" id="hedge-slot2-qty">1.0 BTC</span>
+                            <span class="badge badge-info" id="hedge-slot2-tp-rank" style="margin-left: 6px; display: none;">🥈 2nd TP Trader</span>
                         </div>
                         <span class="badge badge-warning" id="hedge-slot2-status">IDLE</span>
+                    </div>
+
+                    <!-- Active Position Telemetry Banner (Visible when ACTIVE) -->
+                    <div id="hedge-slot2-active-banner" style="display: none; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); padding: 10px; border-radius: 6px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 12px;">
+                        <div style="font-size: 11px; font-weight: 700; color: var(--accent-emerald); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                            <span id="hedge-slot2-active-dir-label">🟢 BULLISH (BUY PUT + LONG)</span>
+                            <span id="hedge-slot2-active-pnl" style="color: var(--accent-emerald); font-size: 12px;">+$0.00 (+0.00%)</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+                            <div><span style="color: var(--text-muted);">Fut Entry:</span> <strong id="hedge-slot2-active-fut-entry" style="color: #fff;">$0.00</strong></div>
+                            <div><span style="color: var(--text-muted);">Target TP:</span> <strong id="hedge-slot2-active-fut-tp" style="color: var(--accent-emerald);">$0.00</strong></div>
+                            <div><span style="color: var(--text-muted);">Opt Entry:</span> <strong id="hedge-slot2-active-opt-mark" style="color: var(--accent-amber);">$0.00</strong></div>
+                            <div><span style="color: var(--text-muted);">ITM Strike:</span> <strong id="hedge-slot2-active-strike" style="color: #fff;">$0.00</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Idle / Rejection Reason Box (Visible when IDLE) -->
+                    <div id="hedge-slot2-idle-reason-box" style="background: rgba(244, 63, 94, 0.05); border: 1px dashed rgba(244, 63, 94, 0.3); padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 11px; font-family: var(--font-mono); color: var(--accent-rose);">
+                        <span>🔍 Reason Not Trading:</span> <strong id="hedge-slot2-idle-reason-txt" style="color: #fff;">Outside Entry Window Range</strong>
                     </div>
 
                     <!-- Timers Row -->
@@ -409,8 +448,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-
             <!-- Live Condition checklist -->
             <div class="hero-grid" style="grid-template-columns: 1fr; margin-bottom: 24px;">
                 <div class="hero-tile">

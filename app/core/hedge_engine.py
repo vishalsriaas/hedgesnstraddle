@@ -169,6 +169,98 @@ class HedgeEngine:
         s2_put_tv = self.calculate_time_value(s2_put_mark, s2_put_strk, "PUT", self.last_spot_price)
         s2_call_tv = self.calculate_time_value(s2_call_mark, s2_call_strk, "CALL", self.last_spot_price)
 
+        current_session_key = get_current_binance_session_date()
+
+        # Determine Idle / Rejection Reasons for Slot 1
+        s1_idle_reason = None
+        if not self.slot1_session_id:
+            if getattr(self, "slot1_completed", False) or self.slot1_traded_session_key == current_session_key:
+                s1_idle_reason = f"Session {current_session_key} Traded & Completed"
+            elif is_weekend_session() and cfg.get("SKIP_WEEKENDS", "1") == "1":
+                s1_idle_reason = "Weekend Expiry Skipped (Sat/Sun)"
+            elif not (w1_start_rel <= now_rel <= get_session_relative_minutes(w1_end)):
+                s1_idle_reason = f"Outside Window Range ({w1_start} - {w1_end})"
+            elif s1_put_mark > s1_max_prem and s1_call_mark > s1_max_prem:
+                s1_idle_reason = f"Option Mark (${max(s1_put_mark, s1_call_mark):.2f}) > Max Prem Cap (${s1_max_prem:.2f})"
+            elif s1_put_tv > s1_max_tv and s1_call_tv > s1_max_tv:
+                s1_idle_reason = f"Time Value (${max(s1_put_tv, s1_call_tv):.2f}) > TV Cap (${s1_max_tv:.2f})"
+            else:
+                s1_idle_reason = "Awaiting Market Condition Trigger"
+
+        # Determine Idle / Rejection Reasons for Slot 2
+        s2_idle_reason = None
+        if not self.slot2_session_id:
+            if getattr(self, "slot2_completed", False) or self.slot2_traded_session_key == current_session_key:
+                s2_idle_reason = f"Session {current_session_key} Traded & Completed"
+            elif is_weekend_session() and cfg.get("SKIP_WEEKENDS", "1") == "1":
+                s2_idle_reason = "Weekend Expiry Skipped (Sat/Sun)"
+            elif not (w2_start_rel <= now_rel <= get_session_relative_minutes(w2_end)):
+                s2_idle_reason = f"Outside Window Range ({w2_start} - {w2_end})"
+            elif self.slot1_session_id and self.slot1_strike is not None and s2_put_strk < self.slot1_strike:
+                s2_idle_reason = f"Rule C Strike Clash (${s2_put_strk:.0f} < ${self.slot1_strike:.0f})"
+            elif s2_put_mark > s2_max_prem and s2_call_mark > s2_max_prem:
+                s2_idle_reason = f"Option Mark (${max(s2_put_mark, s2_call_mark):.2f}) > Max Prem Cap (${s2_max_prem:.2f})"
+            elif s2_put_tv > s2_max_tv and s2_call_tv > s2_max_tv:
+                s2_idle_reason = f"Time Value (${max(s2_put_tv, s2_call_tv):.2f}) > TV Cap (${s2_max_tv:.2f})"
+            else:
+                s2_idle_reason = "Awaiting Market Condition Trigger"
+
+        # Calculate Active Trade Live Position Telemetry for Slot 1
+        s1_active_trade = None
+        if self.slot1_session_id:
+            dir_str1 = getattr(self, "slot1_direction", "Bullish")
+            opt_mark1 = self.slot1_option_mark or 0.0
+            fut_entry1 = getattr(self, "slot1_fut_entry", self.last_futures_mark)
+            fut_tp1 = (fut_entry1 + opt_mark1) if dir_str1 == "Bullish" else (fut_entry1 - opt_mark1)
+            
+            pnl_fut1 = (self.last_futures_mark - fut_entry1) * s1_qty if dir_str1 == "Bullish" else (fut_entry1 - self.last_futures_mark) * s1_qty
+            opt_cur_mark1 = s1_put_mark if dir_str1 == "Bullish" else s1_call_mark
+            pnl_opt1 = (opt_cur_mark1 - opt_mark1) * s1_qty
+            pnl_total1 = pnl_fut1 + pnl_opt1
+            pnl_pct1 = (pnl_total1 / (fut_entry1 * s1_qty)) * 100 if (fut_entry1 * s1_qty) > 0 else 0.0
+
+            rank1 = "🥇 1st TP Trader" if self.tp_rank_1_slot == "1st Trader" else ("🥈 2nd TP Trader" if self.tp_rank_2_slot == "1st Trader" else "Pending TP")
+
+            s1_active_trade = {
+                "direction": dir_str1,
+                "strategy_label": "🟢 BULLISH (BUY PUT + LONG)" if dir_str1 == "Bullish" else "🔴 BEARISH (BUY CALL + SHORT)",
+                "strike": self.slot1_strike or 0.0,
+                "option_entry_mark": opt_mark1,
+                "futures_entry": fut_entry1,
+                "futures_tp": fut_tp1,
+                "pnl_usdt": round(pnl_total1, 2),
+                "pnl_pct": round(pnl_pct1, 2),
+                "tp_rank": rank1
+            }
+
+        # Calculate Active Trade Live Position Telemetry for Slot 2
+        s2_active_trade = None
+        if self.slot2_session_id:
+            dir_str2 = getattr(self, "slot2_direction", "Bullish")
+            opt_mark2 = self.slot2_option_mark or 0.0
+            fut_entry2 = getattr(self, "slot2_fut_entry", self.last_futures_mark)
+            fut_tp2 = (fut_entry2 + opt_mark2) if dir_str2 == "Bullish" else (fut_entry2 - opt_mark2)
+            
+            pnl_fut2 = (self.last_futures_mark - fut_entry2) * s2_qty if dir_str2 == "Bullish" else (fut_entry2 - self.last_futures_mark) * s2_qty
+            opt_cur_mark2 = s2_put_mark if dir_str2 == "Bullish" else s2_call_mark
+            pnl_opt2 = (opt_cur_mark2 - opt_mark2) * s2_qty
+            pnl_total2 = pnl_fut2 + pnl_opt2
+            pnl_pct2 = (pnl_total2 / (fut_entry2 * s2_qty)) * 100 if (fut_entry2 * s2_qty) > 0 else 0.0
+
+            rank2 = "🥇 1st TP Trader" if self.tp_rank_1_slot == "2nd Trader" else ("🥈 2nd TP Trader" if self.tp_rank_2_slot == "2nd Trader" else "Pending TP")
+
+            s2_active_trade = {
+                "direction": dir_str2,
+                "strategy_label": "🟢 BULLISH (BUY PUT + LONG)" if dir_str2 == "Bullish" else "🔴 BEARISH (BUY CALL + SHORT)",
+                "strike": self.slot2_strike or 0.0,
+                "option_entry_mark": opt_mark2,
+                "futures_entry": fut_entry2,
+                "futures_tp": fut_tp2,
+                "pnl_usdt": round(pnl_total2, 2),
+                "pnl_pct": round(pnl_pct2, 2),
+                "tp_rank": rank2
+            }
+
         hedge_wallet_val = float(cfg.get("PAPER_WALLET_USDT", "100000.0"))
 
         return {
@@ -178,6 +270,7 @@ class HedgeEngine:
             "last_spot_price": self.last_spot_price,
             "last_futures_mark": self.last_futures_mark,
             "hedge_paper_wallet_usdt": hedge_wallet_val,
+            "active_session_key": current_session_key,
             "slot1": {
                 "role": "1st Trader",
                 "qty": s1_qty,
@@ -187,6 +280,8 @@ class HedgeEngine:
                 "open_countdown": slot1_open_cd,
                 "squareoff_countdown": slot1_sq_cd,
                 "status": "Active" if self.slot1_session_id else ("Completed" if getattr(self, "slot1_completed", False) else "Idle"),
+                "idle_reason": s1_idle_reason,
+                "active_trade": s1_active_trade,
                 "filled_direction": getattr(self, "slot1_direction", None) if self.slot1_session_id else None,
                 "filled_strike": self.slot1_strike or 0.0,
                 "filled_opt_mark": self.slot1_option_mark or 0.0,
@@ -220,6 +315,8 @@ class HedgeEngine:
                 "open_countdown": slot2_open_cd,
                 "squareoff_countdown": slot2_sq_cd,
                 "status": "Active" if self.slot2_session_id else ("Completed" if getattr(self, "slot2_completed", False) else "Idle"),
+                "idle_reason": s2_idle_reason,
+                "active_trade": s2_active_trade,
                 "filled_direction": getattr(self, "slot2_direction", None) if self.slot2_session_id else None,
                 "filled_strike": self.slot2_strike or 0.0,
                 "filled_opt_mark": self.slot2_option_mark or 0.0,

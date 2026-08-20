@@ -357,15 +357,49 @@ async function fetchSnapshot() {
 
                 // 1st Trader (Slot 1)
                 const slot1 = hedgeLM.slot1 || {};
+                // 1st Trader (Slot 1)
+                const slot1 = hedgeLM.slot1 || {};
                 const slot1Badge = document.getElementById("hedge-slot1-status");
                 if (slot1Badge) {
                     setTextContent(slot1Badge, slot1.status || "IDLE");
-                    slot1Badge.className = `badge ${slot1.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
+                    slot1Badge.className = `badge ${slot1.status === 'Active' ? 'badge-success' : (slot1.status === 'Completed' ? 'badge-info' : 'badge-warning')}`;
                 }
                 setTextContent(document.getElementById("hedge-slot1-qty"), `${slot1.qty || 1.0} BTC`);
                 setTextContent(document.getElementById("hedge-slot1-window-range"), `${slot1.window_start || '06:00'} - ${slot1.window_end || '07:30'}`);
                 setTextContent(document.getElementById("hedge-slot1-open-cd"), slot1.open_countdown || "00:00:00");
                 setTextContent(document.getElementById("hedge-slot1-sq-cd"), `${slot1.sq_end || '11:30'} AM (${slot1.squareoff_countdown || '00:00:00'})`);
+
+                // Slot 1 Active Trade Banner vs Idle Reason Box
+                const s1ActiveBanner = document.getElementById("hedge-slot1-active-banner");
+                const s1IdleBox = document.getElementById("hedge-slot1-idle-reason-box");
+                const s1TpRank = document.getElementById("hedge-slot1-tp-rank");
+
+                if (slot1.status === 'Active' && slot1.active_trade) {
+                    if (s1ActiveBanner) s1ActiveBanner.style.display = "block";
+                    if (s1IdleBox) s1IdleBox.style.display = "none";
+                    
+                    const at1 = slot1.active_trade;
+                    setTextContent(document.getElementById("hedge-slot1-active-dir-label"), at1.strategy_label);
+                    const pnlEl1 = document.getElementById("hedge-slot1-active-pnl");
+                    if (pnlEl1) {
+                        setTextContent(pnlEl1, `${at1.pnl_usdt >= 0 ? '+' : ''}$${at1.pnl_usdt.toFixed(2)} (${at1.pnl_pct >= 0 ? '+' : ''}${at1.pnl_pct.toFixed(2)}%)`);
+                        pnlEl1.style.color = at1.pnl_usdt >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
+                    }
+                    setTextContent(document.getElementById("hedge-slot1-active-fut-entry"), `$${at1.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                    setTextContent(document.getElementById("hedge-slot1-active-fut-tp"), `$${at1.futures_tp.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                    setTextContent(document.getElementById("hedge-slot1-active-opt-mark"), `$${at1.option_entry_mark.toFixed(2)}`);
+                    setTextContent(document.getElementById("hedge-slot1-active-strike"), `$${at1.strike.toLocaleString()} ${at1.direction === 'Bullish' ? 'PUT' : 'CALL'}`);
+
+                    if (s1TpRank) {
+                        s1TpRank.style.display = "inline-block";
+                        setTextContent(s1TpRank, at1.tp_rank || "Pending TP");
+                    }
+                } else {
+                    if (s1ActiveBanner) s1ActiveBanner.style.display = "none";
+                    if (s1IdleBox) s1IdleBox.style.display = "block";
+                    if (s1TpRank) s1TpRank.style.display = "none";
+                    setTextContent(document.getElementById("hedge-slot1-idle-reason-txt"), slot1.idle_reason || "Outside Window Range");
+                }
 
                 const s1Bull = slot1.bullish || {};
                 setTextContent(document.getElementById("hedge-slot1-bull-strike"), `$${(s1Bull.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} PUT`);
@@ -386,12 +420,44 @@ async function fetchSnapshot() {
                 const slot2Badge = document.getElementById("hedge-slot2-status");
                 if (slot2Badge) {
                     setTextContent(slot2Badge, slot2.status || "IDLE");
-                    slot2Badge.className = `badge ${slot2.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
+                    slot2Badge.className = `badge ${slot2.status === 'Active' ? 'badge-success' : (slot2.status === 'Completed' ? 'badge-info' : 'badge-warning')}`;
                 }
                 setTextContent(document.getElementById("hedge-slot2-qty"), `${slot2.qty || 1.0} BTC`);
                 setTextContent(document.getElementById("hedge-slot2-window-range"), `${slot2.window_start || '07:00'} - ${slot2.window_end || '11:00'}`);
                 setTextContent(document.getElementById("hedge-slot2-open-cd"), slot2.open_countdown || "00:00:00");
                 setTextContent(document.getElementById("hedge-slot2-sq-cd"), `${slot2.sq_end || '11:30'} AM (${slot2.squareoff_countdown || '00:00:00'})`);
+
+                // Slot 2 Active Trade Banner vs Idle Reason Box
+                const s2ActiveBanner = document.getElementById("hedge-slot2-active-banner");
+                const s2IdleBox = document.getElementById("hedge-slot2-idle-reason-box");
+                const s2TpRank = document.getElementById("hedge-slot2-tp-rank");
+
+                if (slot2.status === 'Active' && slot2.active_trade) {
+                    if (s2ActiveBanner) s2ActiveBanner.style.display = "block";
+                    if (s2IdleBox) s2IdleBox.style.display = "none";
+                    
+                    const at2 = slot2.active_trade;
+                    setTextContent(document.getElementById("hedge-slot2-active-dir-label"), at2.strategy_label);
+                    const pnlEl2 = document.getElementById("hedge-slot2-active-pnl");
+                    if (pnlEl2) {
+                        setTextContent(pnlEl2, `${at2.pnl_usdt >= 0 ? '+' : ''}$${at2.pnl_usdt.toFixed(2)} (${at2.pnl_pct >= 0 ? '+' : ''}${at2.pnl_pct.toFixed(2)}%)`);
+                        pnlEl2.style.color = at2.pnl_usdt >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
+                    }
+                    setTextContent(document.getElementById("hedge-slot2-active-fut-entry"), `$${at2.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                    setTextContent(document.getElementById("hedge-slot2-active-fut-tp"), `$${at2.futures_tp.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                    setTextContent(document.getElementById("hedge-slot2-active-opt-mark"), `$${at2.option_entry_mark.toFixed(2)}`);
+                    setTextContent(document.getElementById("hedge-slot2-active-strike"), `$${at2.strike.toLocaleString()} ${at2.direction === 'Bullish' ? 'PUT' : 'CALL'}`);
+
+                    if (s2TpRank) {
+                        s2TpRank.style.display = "inline-block";
+                        setTextContent(s2TpRank, at2.tp_rank || "Pending TP");
+                    }
+                } else {
+                    if (s2ActiveBanner) s2ActiveBanner.style.display = "none";
+                    if (s2IdleBox) s2IdleBox.style.display = "block";
+                    if (s2TpRank) s2TpRank.style.display = "none";
+                    setTextContent(document.getElementById("hedge-slot2-idle-reason-txt"), slot2.idle_reason || "Outside Window Range");
+                }
 
                 const s2Bull = slot2.bullish || {};
                 setTextContent(document.getElementById("hedge-slot2-bull-strike"), `$${(s2Bull.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} PUT`);
