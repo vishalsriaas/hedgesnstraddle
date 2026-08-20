@@ -106,10 +106,10 @@ class HedgeEngine:
         slot2_sq_cd = f"{diff2_sq//60:02d}:{diff2_sq%60:02d}:00"
 
         cond_time_window_valid = (w1_start_rel <= now_rel <= get_session_relative_minutes(w1_end))
-        max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
 
         # Slot 1 Bullish & Bearish live data
         s1_max_prem = slot1_cfg.max_premium if slot1_cfg else 250.0
+        s1_max_tv = slot1_cfg.max_time_value if slot1_cfg else 229.0
         s1_qty = slot1_cfg.contract_qty if slot1_cfg else 1.0
 
         s1_put_strk = getattr(self, "preview_slot1_put_strike", round(self.last_futures_mark / 250.0) * 250.0)
@@ -117,14 +117,21 @@ class HedgeEngine:
         s1_call_strk = getattr(self, "preview_slot1_call_strike", round(self.last_futures_mark / 250.0) * 250.0)
         s1_call_mark = getattr(self, "preview_slot1_call_mark", 0.0)
 
+        s1_put_tv = self.calculate_time_value(s1_put_mark, s1_put_strk, "PUT", self.last_spot_price)
+        s1_call_tv = self.calculate_time_value(s1_call_mark, s1_call_strk, "CALL", self.last_spot_price)
+
         # Slot 2 Bullish & Bearish live data
         s2_max_prem = slot2_cfg.max_premium if slot2_cfg else 400.0
+        s2_max_tv = slot2_cfg.max_time_value if slot2_cfg else 229.0
         s2_qty = slot2_cfg.contract_qty if slot2_cfg else 1.0
 
         s2_put_strk = getattr(self, "preview_slot2_put_strike", round(self.last_futures_mark / 250.0) * 250.0)
         s2_put_mark = getattr(self, "preview_slot2_put_mark", 0.0)
         s2_call_strk = getattr(self, "preview_slot2_call_strike", round(self.last_futures_mark / 250.0) * 250.0)
         s2_call_mark = getattr(self, "preview_slot2_call_mark", 0.0)
+
+        s2_put_tv = self.calculate_time_value(s2_put_mark, s2_put_strk, "PUT", self.last_spot_price)
+        s2_call_tv = self.calculate_time_value(s2_call_mark, s2_call_strk, "CALL", self.last_spot_price)
 
         hedge_wallet_val = float(cfg.get("PAPER_WALLET_USDT", "100000.0"))
 
@@ -134,7 +141,6 @@ class HedgeEngine:
             "server_time": now_time_full,
             "last_spot_price": self.last_spot_price,
             "last_futures_mark": self.last_futures_mark,
-            "max_option_spend": max_option_spend,
             "hedge_paper_wallet_usdt": hedge_wallet_val,
             "slot1": {
                 "role": "1st Trader",
@@ -154,16 +160,18 @@ class HedgeEngine:
                     "strike": s1_put_strk,
                     "option_type": "PUT",
                     "option_mark": s1_put_mark,
+                    "time_value": round(s1_put_tv, 2),
                     "rule_b_valid": (s1_put_mark <= s1_max_prem) if s1_put_mark > 0 else True,
-                    "max_spend_valid": (s1_put_mark * s1_qty <= max_option_spend) if s1_put_mark > 0 else True,
+                    "tv_valid": (s1_put_tv <= s1_max_tv) if s1_put_mark > 0 else True,
                     "futures_tp": self.last_futures_mark + s1_put_mark
                 },
                 "bearish": {
                     "strike": s1_call_strk,
                     "option_type": "CALL",
                     "option_mark": s1_call_mark,
+                    "time_value": round(s1_call_tv, 2),
                     "rule_b_valid": (s1_call_mark <= s1_max_prem) if s1_call_mark > 0 else True,
-                    "max_spend_valid": (s1_call_mark * s1_qty <= max_option_spend) if s1_call_mark > 0 else True,
+                    "tv_valid": (s1_call_tv <= s1_max_tv) if s1_call_mark > 0 else True,
                     "futures_tp": self.last_futures_mark - s1_call_mark
                 }
             },
@@ -185,16 +193,18 @@ class HedgeEngine:
                     "strike": s2_put_strk,
                     "option_type": "PUT",
                     "option_mark": s2_put_mark,
+                    "time_value": round(s2_put_tv, 2),
                     "rule_b_valid": (s2_put_mark <= s2_max_prem) if s2_put_mark > 0 else True,
-                    "max_spend_valid": (s2_put_mark * s2_qty <= max_option_spend) if s2_put_mark > 0 else True,
+                    "tv_valid": (s2_put_tv <= s2_max_tv) if s2_put_mark > 0 else True,
                     "futures_tp": self.last_futures_mark + s2_put_mark
                 },
                 "bearish": {
                     "strike": s2_call_strk,
                     "option_type": "CALL",
                     "option_mark": s2_call_mark,
+                    "time_value": round(s2_call_tv, 2),
                     "rule_b_valid": (s2_call_mark <= s2_max_prem) if s2_call_mark > 0 else True,
-                    "max_spend_valid": (s2_call_mark * s2_qty <= max_option_spend) if s2_call_mark > 0 else True,
+                    "tv_valid": (s2_call_tv <= s2_max_tv) if s2_call_mark > 0 else True,
                     "futures_tp": self.last_futures_mark - s2_call_mark
                 }
             },
@@ -294,9 +304,28 @@ class HedgeEngine:
         strike = round(futures_mark / 250.0) * 250.0
         return (strike, 150.0, today_sym, f"BTC-{today_sym}-{int(strike)}-{target_type}")
 
+    def calculate_time_value(self, option_mark: float, strike: float, option_type: str, spot_price: float) -> float:
+        """
+        Calculates option Time Value (TV) = Option Mark - Intrinsic Value.
+        PUT Intrinsic Value = max(0, Strike - Spot)
+        CALL Intrinsic Value = max(0, Spot - Strike)
+        """
+        if not option_mark or option_mark <= 0:
+            return 0.0
+        if option_type.upper() in ["PUT", "P"]:
+            intrinsic = max(0.0, strike - spot_price)
+        else:
+            intrinsic = max(0.0, spot_price - strike)
+        return max(0.0, option_mark - intrinsic)
+
+    def validate_time_value(self, option_mark: float, strike: float, option_type: str, spot_price: float, max_time_value: float) -> bool:
+        """Validates that Time Value <= max_time_value."""
+        tv = self.calculate_time_value(option_mark, strike, option_type, spot_price)
+        return tv <= max_time_value
+
     async def execute_slot_entry(
         self, db: Session, role_name: str, role_config: HedgeStrategyConfig, 
-        futures_mark: float, spot_price: float, max_option_spend: float
+        futures_mark: float, spot_price: float
     ) -> Optional[int]:
         """
         Executes atomic slot trade: BUY Option @ option_mark + OPEN Futures @ futures_mark.
@@ -304,6 +333,7 @@ class HedgeEngine:
         """
         qty = role_config.contract_qty
         max_premium = role_config.max_premium
+        max_tv = role_config.max_time_value
 
         # Determine direction: Check if explicit (Bullish/Bearish) or Auto (evaluate both)
         pref_direction = role_config.direction or "Auto"
@@ -315,8 +345,8 @@ class HedgeEngine:
             strike_b, mark_b, exp_b, sym_b = await self.find_nearest_itm_option(futures_mark, "Bullish")
             strike_r, mark_r, exp_r, sym_r = await self.find_nearest_itm_option(futures_mark, "Bearish")
             
-            valid_b = (mark_b <= max_premium) and self.validate_option_spend(mark_b, qty, max_option_spend)
-            valid_r = (mark_r <= max_premium) and self.validate_option_spend(mark_r, qty, max_option_spend)
+            valid_b = (mark_b <= max_premium) and self.validate_time_value(mark_b, strike_b, "PUT", spot_price, max_tv)
+            valid_r = (mark_r <= max_premium) and self.validate_time_value(mark_r, strike_r, "CALL", spot_price, max_tv)
 
             if valid_b and not valid_r:
                 direction, strike, option_mark, expiry_sym, opt_symbol = "Bullish", strike_b, mark_b, exp_b, sym_b
@@ -326,12 +356,15 @@ class HedgeEngine:
                 # Default to Bullish if both valid
                 direction, strike, option_mark, expiry_sym, opt_symbol = "Bullish", strike_b, mark_b, exp_b, sym_b
 
-        # Rule B: Premium Cap Check (option_mark <= max_premium) and Spend Limit
+        # Rule B: Premium Cap Check (option_mark <= max_premium) and Time Value Limit Check
         if option_mark > max_premium:
             logger.warning("Hedge Slot [%s] option_mark $%.2f > max_premium limit $%.2f - REJECTED", role_name, option_mark, max_premium)
             return None
 
-        if not self.validate_option_spend(option_mark, qty, max_option_spend):
+        opt_type_str = "PUT" if direction == "Bullish" else "CALL"
+        if not self.validate_time_value(option_mark, strike, opt_type_str, spot_price, max_tv):
+            tv_calculated = self.calculate_time_value(option_mark, strike, opt_type_str, spot_price)
+            logger.warning("Hedge Slot [%s] Time Value $%.2f > max_time_value limit $%.2f - REJECTED", role_name, tv_calculated, max_tv)
             return None
 
         now_ist = datetime.now(ist).replace(tzinfo=None)
@@ -562,8 +595,6 @@ class HedgeEngine:
                 w_end_rel = get_session_relative_minutes(f"{w_end_h:02d}:{w_end_m:02d}")
                 sq_end_rel = get_session_relative_minutes(f"{sq_h:02d}:{sq_m:02d}")
 
-                max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
-
                 # 1. State Transition: Entry Window Active
                 if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE"]:
                     self.state = "ENTRY_WINDOW"
@@ -579,7 +610,7 @@ class HedgeEngine:
                 if self.state == "ENTRY_WINDOW":
                     # Evaluate Slot 1
                     if not self.slot1_session_id and slot1_cfg and slot1_cfg.enabled:
-                        await self.execute_slot_entry(db, "1st Trader", slot1_cfg, futures_mark, spot_price, max_option_spend)
+                        await self.execute_slot_entry(db, "1st Trader", slot1_cfg, futures_mark, spot_price)
 
                     # Evaluate Slot 2 with Rule C (Clash Check)
                     if not self.slot2_session_id and slot2_cfg and slot2_cfg.enabled:
@@ -592,7 +623,7 @@ class HedgeEngine:
                                 should_evaluate_slot2 = False
 
                         if should_evaluate_slot2:
-                            await self.execute_slot_entry(db, "2nd Trader", slot2_cfg, futures_mark, spot_price, max_option_spend)
+                            await self.execute_slot_entry(db, "2nd Trader", slot2_cfg, futures_mark, spot_price)
 
                     if self.slot1_session_id or self.slot2_session_id:
                         self.state = "IN_TRADE"
@@ -604,7 +635,6 @@ class HedgeEngine:
                 # 4. Flush Pending Configs on Session Complete
                 if self.state == "COMPLETED":
                     self.flush_pending_config_on_session_close(db)
-                    self.state = "IDLE"
 
                 db.close()
             except Exception as e:

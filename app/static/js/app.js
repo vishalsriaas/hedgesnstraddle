@@ -372,14 +372,14 @@ async function fetchSnapshot() {
                 setTextContent(document.getElementById("hedge-slot1-bull-mark"), `$${(s1Bull.option_mark || 0).toFixed(2)}`);
                 setTextContent(document.getElementById("hedge-slot1-bull-tp"), `$${(s1Bull.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 formatRuleCheck("hedge-slot1-bull-rule-b", s1Bull.rule_b_valid);
-                formatRuleCheck("hedge-slot1-bull-spend", s1Bull.max_spend_valid);
+                formatRuleCheck("hedge-slot1-bull-spend", s1Bull.tv_valid);
 
                 const s1Bear = slot1.bearish || {};
                 setTextContent(document.getElementById("hedge-slot1-bear-strike"), `$${(s1Bear.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} CALL`);
                 setTextContent(document.getElementById("hedge-slot1-bear-mark"), `$${(s1Bear.option_mark || 0).toFixed(2)}`);
                 setTextContent(document.getElementById("hedge-slot1-bear-tp"), `$${(s1Bear.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 formatRuleCheck("hedge-slot1-bear-rule-b", s1Bear.rule_b_valid);
-                formatRuleCheck("hedge-slot1-bear-spend", s1Bear.max_spend_valid);
+                formatRuleCheck("hedge-slot1-bear-spend", s1Bear.tv_valid);
 
                 // 2nd Trader (Slot 2)
                 const slot2 = hedgeLM.slot2 || {};
@@ -398,14 +398,14 @@ async function fetchSnapshot() {
                 setTextContent(document.getElementById("hedge-slot2-bull-mark"), `$${(s2Bull.option_mark || 0).toFixed(2)}`);
                 setTextContent(document.getElementById("hedge-slot2-bull-tp"), `$${(s2Bull.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 formatRuleCheck("hedge-slot2-bull-rule-b", s2Bull.rule_b_valid);
-                formatRuleCheck("hedge-slot2-bull-spend", s2Bull.max_spend_valid);
+                formatRuleCheck("hedge-slot2-bull-spend", s2Bull.tv_valid);
 
                 const s2Bear = slot2.bearish || {};
                 setTextContent(document.getElementById("hedge-slot2-bear-strike"), `$${(s2Bear.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} CALL`);
                 setTextContent(document.getElementById("hedge-slot2-bear-mark"), `$${(s2Bear.option_mark || 0).toFixed(2)}`);
                 setTextContent(document.getElementById("hedge-slot2-bear-tp"), `$${(s2Bear.futures_tp || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 formatRuleCheck("hedge-slot2-bear-rule-b", s2Bear.rule_b_valid);
-                formatRuleCheck("hedge-slot2-bear-spend", s2Bear.max_spend_valid);
+                formatRuleCheck("hedge-slot2-bear-spend", s2Bear.tv_valid);
 
                 // Condition Badges
                 const updateCond = (elId, isValid, validTxt = "✅ Active", invalidTxt = "❌ Inactive") => {
@@ -419,7 +419,6 @@ async function fetchSnapshot() {
                 updateCond("hedge-cond-rule-a", hedgeLM.cond_rule_a_valid, "✅ Matched", "❌ Invalid");
                 updateCond("hedge-cond-rule-b", hedgeLM.cond_rule_b_valid, "✅ Valid", "❌ Exceeded");
                 updateCond("hedge-cond-rule-c", hedgeLM.cond_rule_c_valid, "✅ Pass", "❌ Strike Clash");
-                updateCond("hedge-cond-spend", hedgeLM.cond_max_spend_valid, "✅ Enforced", "❌ Exceeded");
             }
 
             const activeHedge = data.hedge.active_session;
@@ -728,7 +727,7 @@ async function saveStraddleConfig(e) {
 
 const HEDGE_FIELDS = [
     "RUNTIME_MODE", "ENGINE_ENABLED", "PAPER_TRADING_ENABLED", "GLOBAL_PAUSE",
-    "MAX_OPTION_SPEND", "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC"
+    "Q_MAX_BTC", "WORKER_POLL_SECONDS", "FILL_TIMEOUT_SEC"
 ];
 
 async function loadHedgeConfig() {

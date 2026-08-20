@@ -190,17 +190,19 @@ def run_suite():
         return False
 
     # -----------------------------------------------------------------
-    # TEST 11: Hedge Engine MAX_OPTION_SPEND Rule Enforcement
+    # TEST 11: Hedge Engine Max Time Value Limit Enforcement
     # -----------------------------------------------------------------
     from app.core.hedge_engine import hedge_engine
-    is_rejected = not hedge_engine.validate_option_spend(option_ask=500.0, qty=1.0, max_option_spend=400.0)
-    is_accepted = hedge_engine.validate_option_spend(option_ask=350.0, qty=1.0, max_option_spend=400.0)
+    # PUT: strike=72000, spot=71000 -> intrinsic=1000. Option mark 1300 -> TV=300 (exceeds 229 limit -> rejected)
+    is_rejected = not hedge_engine.validate_time_value(option_mark=1300.0, strike=72000.0, option_type="PUT", spot_price=71000.0, max_time_value=229.0)
+    # Option mark 1150 -> TV=150 (<= 229 limit -> accepted)
+    is_accepted = hedge_engine.validate_time_value(option_mark=1150.0, strike=72000.0, option_type="PUT", spot_price=71000.0, max_time_value=229.0)
     
     if is_rejected and is_accepted:
         passed_count += 1
-        print(f"✅ [TEST 11/11] Hedge MAX_OPTION_SPEND Rule Enforcement: Spend $500 > $400 Rejected, $350 Accepted - VERIFIED")
+        print(f"✅ [TEST 11/11] Hedge Max Time Value Limit Enforcement: TV $300 > $229 Rejected, TV $150 Accepted - VERIFIED")
     else:
-        print(f"❌ [TEST 11/11] MAX_OPTION_SPEND Rule Enforcement Failed")
+        print(f"❌ [TEST 11/11] Max Time Value Limit Enforcement Failed")
         return False
 
     print("=" * 75)
