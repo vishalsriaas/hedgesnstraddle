@@ -49,6 +49,90 @@ class HedgeEngine:
         configs = db.query(HedgeConfig).all()
         return {c.key: c.value for c in configs}
 
+    def get_live_monitoring_snapshot(self, db: Session) -> Dict[str, Any]:
+        """Returns dynamic Hedge workflow status, dual trader cards & condition checks for the frontend."""
+        cfg = self.load_config(db)
+        slot1_cfg = self.get_role_strategy_config(db, "1st Trader")
+        slot2_cfg = self.get_role_strategy_config(db, "2nd Trader")
+
+        w_start_h = slot1_cfg.trade_start_h if slot1_cfg else 6
+        w_start_m = slot1_cfg.trade_start_m if slot1_cfg else 0
+        w_end_h = slot1_cfg.trade_end_h if slot1_cfg else 7
+        w_end_m = slot1_cfg.trade_end_m if slot1_cfg else 30
+        sq_h = slot1_cfg.force_close_h if slot1_cfg else 11
+        sq_m = slot1_cfg.force_close_m if slot1_cfg else 30
+
+        window_start = f"{w_start_h:02d}:{w_start_m:02d}"
+        window_end = f"{w_end_h:02d}:{w_end_m:02d}"
+        sq_end = f"{sq_h:02d}:{sq_m:02d}"
+
+        now_time_full = datetime.now(ist).strftime("%H:%M:%S")
+        now_time_str = now_time_full[:5]
+
+        now_rel = get_session_relative_minutes(now_time_str)
+        w_start_rel = get_session_relative_minutes(window_start)
+        w_end_rel = get_session_relative_minutes(window_end)
+        sq_end_rel = get_session_relative_minutes(sq_end)
+
+        cond_time_window_valid = (w_start_rel <= now_rel <= w_end_rel)
+        max_premium = slot1_cfg.max_premium if slot1_cfg else 280.0
+        max_option_spend = float(cfg.get("MAX_OPTION_SPEND", "400.0"))
+
+        cond_rule_a_valid = True
+        cond_rule_b_valid = ((self.slot1_option_mark or 150.0) <= max_premium)
+        cond_rule_c_valid = True
+        if self.slot1_strike is not None and self.slot2_strike is not None:
+            cond_rule_c_valid = (self.slot2_strike >= self.slot1_strike)
+
+        cond_max_spend_valid = ((self.slot1_option_mark or 150.0) * (slot1_cfg.contract_qty if slot1_cfg else 1.0) <= max_option_spend)
+
+        slot1_dir = slot1_cfg.direction if slot1_cfg else "Bullish"
+        slot1_qty = slot1_cfg.contract_qty if slot1_cfg else 1.0
+        slot1_fut_entry = self.last_futures_mark
+        slot1_tp = (slot1_fut_entry + (self.slot1_option_mark or 150.0)) if slot1_dir == "Bullish" else (slot1_fut_entry - (self.slot1_option_mark or 150.0))
+
+        slot2_dir = slot2_cfg.direction if slot2_cfg else "Bearish"
+        slot2_qty = slot2_cfg.contract_qty if slot2_cfg else 1.0
+        slot2_fut_entry = self.last_futures_mark
+        slot2_tp = (slot2_fut_entry + (self.slot2_option_mark or 150.0)) if slot2_dir == "Bullish" else (slot2_fut_entry - (self.slot2_option_mark or 150.0))
+
+        return {
+            "state": self.state,
+            "active_role": self.active_role,
+            "server_time": now_time_full,
+            "last_spot_price": self.last_spot_price,
+            "last_futures_mark": self.last_futures_mark,
+            "window_start": window_start,
+            "window_end": window_end,
+            "sq_end": sq_end,
+            "max_option_spend": max_option_spend,
+            "slot1": {
+                "role": "1st Trader",
+                "direction": slot1_dir,
+                "qty": slot1_qty,
+                "strike": self.slot1_strike or (round(self.last_futures_mark / 250.0) * 250.0),
+                "option_mark": self.slot1_option_mark or 150.0,
+                "futures_entry": slot1_fut_entry if self.slot1_session_id else 0.0,
+                "futures_tp": slot1_tp if self.slot1_session_id else 0.0,
+                "status": "Active" if self.slot1_session_id else "Idle"
+            },
+            "slot2": {
+                "role": "2nd Trader",
+                "direction": slot2_dir,
+                "qty": slot2_qty,
+                "strike": self.slot2_strike or (round(self.last_futures_mark / 250.0) * 250.0),
+                "option_mark": self.slot2_option_mark or 150.0,
+                "futures_entry": slot2_fut_entry if self.slot2_session_id else 0.0,
+                "futures_tp": slot2_tp if self.slot2_session_id else 0.0,
+                "status": "Active" if self.slot2_session_id else "Idle"
+            },
+            "cond_time_window_valid": cond_time_window_valid,
+            "cond_rule_a_valid": cond_rule_a_valid,
+            "cond_rule_b_valid": cond_rule_b_valid,
+            "cond_rule_c_valid": cond_rule_c_valid,
+            "cond_max_spend_valid": cond_max_spend_valid
+        }
+
     def get_role_strategy_config(self, db: Session, role_name: str) -> Optional[HedgeStrategyConfig]:
         """Fetch dynamic Hedge Strategy Config parameters by role name ('1st Trader' vs '2nd Trader')."""
         return db.query(HedgeStrategyConfig).filter(HedgeStrategyConfig.strategy_name == role_name).first()

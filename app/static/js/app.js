@@ -331,17 +331,67 @@ async function fetchSnapshot() {
             }
             setTextContent(document.getElementById("straddle-hero-wallet"), `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
 
-            // Update Hedge Hero Cards
+            // Update Hedge Telemetry & Hero Cards
+            const hedgeLM = data.hedge.live_monitoring;
+            if (hedgeLM) {
+                setTextContent(document.getElementById("hedge-hero-spot"), `$${btcSpot.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                setTextContent(document.getElementById("hedge-hero-active-role"), hedgeLM.active_role || "1st Trader");
+                setTextContent(document.getElementById("hedge-hero-wallet"), `$${data.wallet.paper_wallet_usdt.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                setTextContent(document.getElementById("hedge-hero-spend-limit"), `$${hedgeLM.max_option_spend || 400}`);
+
+                setTextContent(document.getElementById("hedge-time-to-open"), `${hedgeLM.window_start || '06:00'} - ${hedgeLM.window_end || '07:30'}`);
+                setTextContent(document.getElementById("hedge-time-left"), hedgeLM.server_time || "00:00:00");
+                setTextContent(document.getElementById("hedge-cutoff-timer"), `${hedgeLM.window_end || '07:30'} AM`);
+                setTextContent(document.getElementById("hedge-squareoff-timer"), `${hedgeLM.sq_end || '11:30'} AM Sharp`);
+                setTextContent(document.getElementById("hedge-live-time"), hedgeLM.server_time || "00:00:00");
+
+                // 1st Trader (Slot 1)
+                const slot1 = hedgeLM.slot1 || {};
+                const slot1Badge = document.getElementById("hedge-slot1-status");
+                if (slot1Badge) {
+                    setTextContent(slot1Badge, slot1.status || "IDLE");
+                    slot1Badge.className = `badge ${slot1.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
+                }
+                setTextContent(document.getElementById("hedge-slot1-dir"), `${slot1.direction || 'Bullish'} (${slot1.direction === 'Bullish' ? 'BUY PUT + LONG Fut' : 'BUY CALL + SHORT Fut'})`);
+                setTextContent(document.getElementById("hedge-slot1-qty"), `${slot1.qty || 1.0} BTC`);
+                setTextContent(document.getElementById("hedge-slot1-strike"), `$${(slot1.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                setTextContent(document.getElementById("hedge-slot1-opt-mark"), `$${(slot1.option_mark || 0).toFixed(2)}`);
+                setTextContent(document.getElementById("hedge-slot1-fut-entry"), slot1.futures_entry ? `$${slot1.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
+                setTextContent(document.getElementById("hedge-slot1-fut-tp"), slot1.futures_tp ? `$${slot1.futures_tp.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
+
+                // 2nd Trader (Slot 2)
+                const slot2 = hedgeLM.slot2 || {};
+                const slot2Badge = document.getElementById("hedge-slot2-status");
+                if (slot2Badge) {
+                    setTextContent(slot2Badge, slot2.status || "IDLE");
+                    slot2Badge.className = `badge ${slot2.status === 'Active' ? 'badge-success' : 'badge-warning'}`;
+                }
+                setTextContent(document.getElementById("hedge-slot2-dir"), `${slot2.direction || 'Bearish'} (${slot2.direction === 'Bullish' ? 'BUY PUT + LONG Fut' : 'BUY CALL + SHORT Fut'})`);
+                setTextContent(document.getElementById("hedge-slot2-qty"), `${slot2.qty || 1.0} BTC`);
+                setTextContent(document.getElementById("hedge-slot2-strike"), `$${(slot2.strike || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
+                setTextContent(document.getElementById("hedge-slot2-opt-mark"), `$${(slot2.option_mark || 0).toFixed(2)}`);
+                setTextContent(document.getElementById("hedge-slot2-fut-entry"), slot2.futures_entry ? `$${slot2.futures_entry.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
+                setTextContent(document.getElementById("hedge-slot2-fut-tp"), slot2.futures_tp ? `$${slot2.futures_tp.toLocaleString(undefined, {minimumFractionDigits: 2})}` : '$0.00');
+
+                // Condition Badges
+                const updateCond = (elId, isValid, validTxt = "✅ Active", invalidTxt = "❌ Inactive") => {
+                    const el = document.getElementById(elId);
+                    if (el) {
+                        setTextContent(el, isValid ? validTxt : invalidTxt);
+                        el.style.color = isValid ? "var(--accent-emerald)" : "var(--accent-rose)";
+                    }
+                };
+                updateCond("hedge-cond-window", hedgeLM.cond_time_window_valid, "✅ Active Session", "❌ Inactive");
+                updateCond("hedge-cond-rule-a", hedgeLM.cond_rule_a_valid, "✅ Matched", "❌ Invalid");
+                updateCond("hedge-cond-rule-b", hedgeLM.cond_rule_b_valid, "✅ Valid", "❌ Exceeded");
+                updateCond("hedge-cond-rule-c", hedgeLM.cond_rule_c_valid, "✅ Pass", "❌ Strike Clash");
+                updateCond("hedge-cond-spend", hedgeLM.cond_max_spend_valid, "✅ Enforced", "❌ Exceeded");
+            }
+
             const activeHedge = data.hedge.active_session;
             if (activeHedge) {
-                setTextContent(document.getElementById("hedge-hero-bull"), `LONG @ $${(activeHedge.bull_entry || (btcSpot - 50)).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
-                setTextContent(document.getElementById("hedge-hero-bear"), `SHORT @ $${(activeHedge.bear_entry || (btcSpot + 50)).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 setTextContent(document.getElementById("hedge-hero-total-pnl"), `${(activeHedge.realized_pnl || 0) >= 0 ? '+' : ''}$${(activeHedge.realized_pnl || 0).toFixed(2)}`);
             } else {
-                const bullPrice = data.hedge.live_bull_entry || (btcSpot - 50);
-                const bearPrice = data.hedge.live_bear_entry || (btcSpot + 50);
-                setTextContent(document.getElementById("hedge-hero-bull"), `LONG @ $${bullPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
-                setTextContent(document.getElementById("hedge-hero-bear"), `SHORT @ $${bearPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}`);
                 setTextContent(document.getElementById("hedge-hero-total-pnl"), `+$0.00`);
             }
 

@@ -283,36 +283,125 @@
             <!-- Hedge Hero KPI Cards -->
             <div class="hero-grid" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="hero-tile" style="border-left: 4px solid var(--accent-emerald);">
-                    <span class="tile-lbl">BULL FUTURES LEG</span>
-                    <div class="tile-val pos" id="hedge-hero-bull" style="font-size: 20px;">LONG @ $64,100</div>
-                    <div class="tile-sub">Target: +0.50%</div>
+                    <span class="tile-lbl">BTC SPOT ENTRY</span>
+                    <div class="tile-val pos" id="hedge-hero-spot" style="font-size: 20px;">$64,100.00</div>
+                    <div class="tile-sub">Binance Spot Index</div>
                 </div>
 
                 <div class="hero-tile" style="border-left: 4px solid var(--accent-rose);">
-                    <span class="tile-lbl">BEAR FUTURES LEG</span>
-                    <div class="tile-val neg" id="hedge-hero-bear" style="font-size: 20px;">SHORT @ $64,200</div>
-                    <div class="tile-sub">Target: -0.50%</div>
+                    <span class="tile-lbl">REALIZED SESSION PNL</span>
+                    <div class="tile-val pos" id="hedge-hero-total-pnl" style="font-size: 20px;">+$0.00</div>
+                    <div class="tile-sub">Combined Options + Futures</div>
                 </div>
 
                 <div class="hero-tile" style="border-left: 4px solid var(--accent-amber);">
-                    <span class="tile-lbl">OPTION HEDGE RECOVERY</span>
-                    <div class="tile-val" id="hedge-hero-opt-spend" style="color: var(--accent-amber);">$0.00</div>
-                    <div class="tile-sub">Max Spend Limit: $400</div>
+                    <span class="tile-lbl">ACTIVE TRADER ROLE</span>
+                    <div class="tile-val" id="hedge-hero-active-role" style="color: var(--accent-amber); font-size: 20px;">1st Trader</div>
+                    <div class="tile-sub">Priority 1 Execution</div>
                 </div>
 
                 <div class="hero-tile" style="border-left: 4px solid var(--brand-cyan);">
-                    <span class="tile-lbl">TOTAL SESSION P&L</span>
-                    <div class="tile-val pos" id="hedge-hero-total-pnl">+$0.00</div>
-                    <div class="tile-sub">Futures + Option Hedge</div>
+                    <span class="tile-lbl">VIRTUAL PAPER WALLET</span>
+                    <div class="tile-val pos" id="hedge-hero-wallet" style="font-size: 20px;">$100,000.00</div>
+                    <div class="tile-sub">Max Spend Limit: <span id="hedge-hero-spend-limit">$400</span></div>
                 </div>
             </div>
 
-            <!-- Active Dual-Leg Controls -->
+            <!-- Hedge Dynamic Timers Bar -->
+            <div class="hero-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+                <div class="hero-tile">
+                    <span class="tile-lbl">TIME TO OPEN</span>
+                    <div class="tile-val" id="hedge-time-to-open" style="font-size: 16px;">06:00 - 07:30</div>
+                    <div class="tile-sub">Entry Window Range</div>
+                </div>
+                <div class="hero-tile">
+                    <span class="tile-lbl">HEDGE SESSION TIME LEFT</span>
+                    <div class="tile-val" id="hedge-time-left" style="font-size: 16px; color: var(--accent-emerald);">00:00:00</div>
+                    <div class="tile-sub">Active Session Clock</div>
+                </div>
+                <div class="hero-tile">
+                    <span class="tile-lbl">HEDGE CUTOFF TIMER</span>
+                    <div class="tile-val" id="hedge-cutoff-timer" style="font-size: 16px;">07:30 AM</div>
+                    <div class="tile-sub">No New Entries</div>
+                </div>
+                <div class="hero-tile">
+                    <span class="tile-lbl">SQUAREOFF TIMER</span>
+                    <div class="tile-val" id="hedge-squareoff-timer" style="font-size: 16px; color: var(--accent-rose);">11:30 AM Sharp</div>
+                    <div class="tile-sub">Universal Force Close</div>
+                </div>
+            </div>
+
+            <!-- Dual Trader Cards (1st Trader vs 2nd Trader) -->
+            <div class="hero-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 24px;">
+                <div class="hero-tile" style="border-top: 3px solid var(--brand-indigo);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">1st Trader (Priority 1)</span>
+                        <span class="badge badge-success" id="hedge-slot1-status">IDLE</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Strategy Direction:</span> <span id="hedge-slot1-dir" style="color: var(--accent-emerald); font-weight: 700;">Bullish (BUY PUT + LONG Fut)</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Contract Qty:</span> <span id="hedge-slot1-qty">1.0 BTC</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Selected ITM Strike:</span> <span id="hedge-slot1-strike">$64,250.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Option Mark Price:</span> <span id="hedge-slot1-opt-mark" style="color: var(--accent-amber);">$150.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Futures Entry Price:</span> <span id="hedge-slot1-fut-entry">$0.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Futures TP Price:</span> <span id="hedge-slot1-fut-tp" style="color: var(--accent-emerald); font-weight: 700;">$0.00</span></div>
+                    </div>
+                </div>
+
+                <div class="hero-tile" style="border-top: 3px solid var(--brand-cyan);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">2nd Trader (Priority 2)</span>
+                        <span class="badge badge-warning" id="hedge-slot2-status">IDLE</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Strategy Direction:</span> <span id="hedge-slot2-dir" style="color: var(--accent-rose); font-weight: 700;">Bearish (BUY CALL + SHORT Fut)</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Contract Qty:</span> <span id="hedge-slot2-qty">1.0 BTC</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Selected ITM Strike:</span> <span id="hedge-slot2-strike">$64,250.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Option Mark Price:</span> <span id="hedge-slot2-opt-mark" style="color: var(--accent-amber);">$150.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Futures Entry Price:</span> <span id="hedge-slot2-fut-entry">$0.00</span></div>
+                        <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted);">Futures TP Price:</span> <span id="hedge-slot2-fut-tp" style="color: var(--accent-rose); font-weight: 700;">$0.00</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Condition checklist -->
+            <div class="hero-grid" style="grid-template-columns: 1fr; margin-bottom: 24px;">
+                <div class="hero-tile">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);">
+                        <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Algo Live Condition Checks</span>
+                        <span class="badge badge-info" id="hedge-live-time">00:00:00</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+                            <span>🕒 Entry Window (06:00 - 07:30)</span>
+                            <span id="hedge-cond-window" style="font-weight: 700;">❌ Inactive</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+                            <span>🎯 Rule A: Nearest ITM Strike</span>
+                            <span id="hedge-cond-rule-a" style="color: var(--accent-emerald); font-weight: 700;">✅ Matched</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+                            <span>💵 Rule B: Option Mark &le; Max Premium</span>
+                            <span id="hedge-cond-rule-b" style="font-weight: 700;">✅ Valid</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+                            <span>⚔️ Rule C: Slot 2 Strike &ge; Slot 1 Strike</span>
+                            <span id="hedge-cond-rule-c" style="font-weight: 700;">✅ Pass</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px;">
+                            <span>🛡️ Max Option Spend Enforced</span>
+                            <span id="hedge-cond-spend" style="color: var(--accent-emerald); font-weight: 700;">✅ Enforced</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Dual-Leg Controls & Table -->
             <div class="glass-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div>
                         <h3 style="font-size: 18px;">🛡️ Hedge Trading Sessions & Position Control</h3>
-                        <p style="font-size: 13px; color: var(--text-muted);">Simultaneous Bull & Bear leg entry with trailing take-profit targets</p>
+                        <p style="font-size: 13px; color: var(--text-muted);">Simultaneous 1st & 2nd Trader execution with 11:30 AM universal square-off</p>
                     </div>
                     <button onclick="emergencySquareoff('hedge')" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-rose), #e11d48); font-size: 12px; padding: 8px 16px;">🚨 Emergency Square-off Hedge</button>
                 </div>
