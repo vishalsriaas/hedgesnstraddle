@@ -210,7 +210,13 @@ class HedgeEngine:
         if self.slot1_session_id:
             dir_str1 = getattr(self, "slot1_direction", "Bullish")
             opt_mark1 = self.slot1_option_mark or 0.0
-            fut_entry1 = getattr(self, "slot1_fut_entry", self.last_futures_mark)
+
+            # Query exact locked Futures Entry Price from DB position record
+            fut_pos1 = db.query(HedgeOpenPosition).filter(
+                HedgeOpenPosition.session_id == self.slot1_session_id,
+                HedgeOpenPosition.symbol == "BTC-USDT-FUTURES"
+            ).first()
+            fut_entry1 = fut_pos1.entry_price if (fut_pos1 and fut_pos1.entry_price > 0) else getattr(self, "slot1_fut_entry", self.last_futures_mark)
             fut_tp1 = (fut_entry1 + opt_mark1) if dir_str1 == "Bullish" else (fut_entry1 - opt_mark1)
             
             pnl_fut1 = (self.last_futures_mark - fut_entry1) * s1_qty if dir_str1 == "Bullish" else (fut_entry1 - self.last_futures_mark) * s1_qty
@@ -238,7 +244,13 @@ class HedgeEngine:
         if self.slot2_session_id:
             dir_str2 = getattr(self, "slot2_direction", "Bullish")
             opt_mark2 = self.slot2_option_mark or 0.0
-            fut_entry2 = getattr(self, "slot2_fut_entry", self.last_futures_mark)
+
+            # Query exact locked Futures Entry Price from DB position record
+            fut_pos2 = db.query(HedgeOpenPosition).filter(
+                HedgeOpenPosition.session_id == self.slot2_session_id,
+                HedgeOpenPosition.symbol == "BTC-USDT-FUTURES"
+            ).first()
+            fut_entry2 = fut_pos2.entry_price if (fut_pos2 and fut_pos2.entry_price > 0) else getattr(self, "slot2_fut_entry", self.last_futures_mark)
             fut_tp2 = (fut_entry2 + opt_mark2) if dir_str2 == "Bullish" else (fut_entry2 - opt_mark2)
             
             pnl_fut2 = (self.last_futures_mark - fut_entry2) * s2_qty if dir_str2 == "Bullish" else (fut_entry2 - self.last_futures_mark) * s2_qty
@@ -588,12 +600,14 @@ class HedgeEngine:
             self.slot1_session_id = sess.id
             self.slot1_strike = strike
             self.slot1_option_mark = option_mark
+            self.slot1_fut_entry = futures_mark
             self.slot1_direction = direction
             self.slot1_traded_session_key = current_session_key
         else:
             self.slot2_session_id = sess.id
             self.slot2_strike = strike
             self.slot2_option_mark = option_mark
+            self.slot2_fut_entry = futures_mark
             self.slot2_direction = direction
             self.slot2_traded_session_key = current_session_key
 
