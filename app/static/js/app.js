@@ -781,9 +781,17 @@ async function saveRoleStrategyConfig(e, stratId, stratName) {
     e.preventDefault();
     if (!authToken) await ensureAuthToken();
 
-    const startParts = (document.getElementById(`role_${stratId}_start`).value || "05:00").split(":");
-    const endParts = (document.getElementById(`role_${stratId}_end`).value || "07:00").split(":");
-    const fcParts = (document.getElementById(`role_${stratId}_fc`).value || "13:00").split(":");
+    const startVal = document.getElementById(`role_${stratId}_start`) ? document.getElementById(`role_${stratId}_start`).value : "05:00";
+    const endVal = document.getElementById(`role_${stratId}_end`) ? document.getElementById(`role_${stratId}_end`).value : "07:00";
+    const fcVal = document.getElementById(`role_${stratId}_fc`) ? document.getElementById(`role_${stratId}_fc`).value : "13:00";
+
+    const startParts = (startVal || "05:00").split(":");
+    const endParts = (endVal || "07:00").split(":");
+    const fcParts = (fcVal || "13:00").split(":");
+
+    const qtyEl = document.getElementById(`role_${stratId}_qty`);
+    const premEl = document.getElementById(`role_${stratId}_max_prem`);
+    const tvEl = document.getElementById(`role_${stratId}_max_tv`);
 
     const payload = {
         id: stratId,
@@ -794,13 +802,13 @@ async function saveRoleStrategyConfig(e, stratId, stratName) {
         trade_end_m: parseInt(endParts[1] || "0"),
         force_close_h: parseInt(fcParts[0] || "13"),
         force_close_m: parseInt(fcParts[1] || "0"),
-        contract_qty: parseFloat(document.getElementById(`role_${stratId}_qty`).value),
-        max_premium: parseFloat(document.getElementById(`role_${stratId}_max_prem`).value),
-        max_time_value: parseFloat(document.getElementById(`role_${stratId}_max_tv`).value)
+        contract_qty: qtyEl ? parseFloat(qtyEl.value || "1.0") : 1.0,
+        max_premium: premEl ? parseFloat(premEl.value || "250.0") : 250.0,
+        max_time_value: tvEl ? parseFloat(tvEl.value || "229.0") : 229.0
     };
 
     try {
-        const res = await fetch("/api/v1/config/hedge/strategies", {
+        let res = await fetch("/api/v1/config/hedge/strategies", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -808,18 +816,37 @@ async function saveRoleStrategyConfig(e, stratId, stratName) {
             },
             body: JSON.stringify(payload)
         });
+
+        if (res.status === 401) {
+            const refreshed = await ensureAuthToken(true);
+            if (refreshed) {
+                res = await fetch("/api/v1/config/hedge/strategies", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+            }
+        }
+
         if (res.ok) {
             const data = await res.json();
-            alert(data.message);
+            alert(data.message || `Strategy rules updated for ${stratName}`);
             loadHedgeConfig();
+        } else {
+            const errData = await res.json().catch(() => ({}));
+            alert(`Save failed (${res.status}): ${errData.detail || 'Unauthorized or Invalid request.'}`);
         }
     } catch (err) {
-        alert(`Error saving role strategy config for ${stratName}`);
+        alert(`Error saving role strategy config for ${stratName}: ` + err.message);
     }
 }
+window.saveRoleStrategyConfig = saveRoleStrategyConfig;
 
 async function saveHedgeConfig(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!authToken) await ensureAuthToken();
 
     const payload = {};
@@ -829,7 +856,7 @@ async function saveHedgeConfig(e) {
     });
 
     try {
-        const res = await fetch("/api/v1/config/hedge", {
+        let res = await fetch("/api/v1/config/hedge", {
             method: "POST",
             headers: { 
                 "Content-Type": "application/json",
@@ -837,15 +864,34 @@ async function saveHedgeConfig(e) {
             },
             body: JSON.stringify(payload)
         });
+
+        if (res.status === 401) {
+            const refreshed = await ensureAuthToken(true);
+            if (refreshed) {
+                res = await fetch("/api/v1/config/hedge", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${authToken}` 
+                    },
+                    body: JSON.stringify(payload)
+                });
+            }
+        }
+
         if (res.ok) {
             const data = await res.json();
-            alert(data.message);
+            alert(data.message || "Hedge Trader Settings saved successfully.");
             loadHedgeConfig();
+        } else {
+            const errData = await res.json().catch(() => ({}));
+            alert(`Save failed (${res.status}): ${errData.detail || 'Unauthorized or Invalid request.'}`);
         }
     } catch (err) {
-        alert("Error saving hedge configuration.");
+        alert("Error saving hedge configuration: " + err.message);
     }
 }
+window.saveHedgeConfig = saveHedgeConfig;
 
 async function loadAuditLogs() {
     if (!authToken) await ensureAuthToken();
