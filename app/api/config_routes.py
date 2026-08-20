@@ -104,9 +104,6 @@ def update_hedge_config(
     current_user: User = Depends(require_admin)
 ):
     ip_addr = get_client_ip(request)
-    session_active = hedge_engine.state in ["RUNNING"]
-
-    staged_results = []
     applied_results = []
 
     for field_name, new_value in payload.items():
@@ -118,51 +115,31 @@ def update_hedge_config(
         if old_val_str == new_val_str:
             continue
 
-        if session_active:
-            pending = db.query(PendingConfig).filter(
-                PendingConfig.config_type == "HEDGE",
-                PendingConfig.field_name == field_name
-            ).first()
-
-            if pending:
-                pending.pending_value = new_val_str
-                pending.user_email = current_user.email
-            else:
-                db.add(PendingConfig(
-                    config_type="HEDGE",
-                    field_name=field_name,
-                    pending_value=new_val_str,
-                    user_email=current_user.email
-                ))
-            staged_results.append(field_name)
+        if existing:
+            existing.value = new_val_str
         else:
-            if existing:
-                existing.value = new_val_str
-            else:
-                db.add(HedgeConfig(key=field_name, value=new_val_str))
+            db.add(HedgeConfig(key=field_name, value=new_val_str))
 
-            audit = ConfigAuditLog(
-                user_email=current_user.email,
-                config_type="HEDGE",
-                field_name=field_name,
-                old_value=old_val_str,
-                new_value=new_val_str,
-                apply_mode="IMMEDIATE",
-                status="APPLIED",
-                ip_address=ip_addr
-            )
-            db.add(audit)
-            applied_results.append(field_name)
+        # Clear any old pending stage for this field
+        db.query(PendingConfig).filter(
+            PendingConfig.config_type == "HEDGE",
+            PendingConfig.field_name == field_name
+        ).delete()
+
+        audit = ConfigAuditLog(
+            user_email=current_user.email,
+            config_type="HEDGE",
+            field_name=field_name,
+            old_value=old_val_str,
+            new_value=new_val_str,
+            apply_mode="IMMEDIATE",
+            status="APPLIED",
+            ip_address=ip_addr
+        )
+        db.add(audit)
+        applied_results.append(field_name)
 
     db.commit()
-
-    if session_active:
-        return {
-            "status": "DEFERRED",
-            "message": "Hedge session active. Changes staged to apply automatically on session close.",
-            "staged_fields": staged_results,
-            "applied_fields": applied_results
-        }
 
     return {
         "status": "APPLIED",
