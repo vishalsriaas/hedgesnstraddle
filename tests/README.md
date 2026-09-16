@@ -20,6 +20,12 @@ wallet/ledger reconciliation, independent hedge schedules, repeat-safe square-of
 restart recovery, pause/disable controls, quote availability, dashboard serialization,
 and the hedge algorithm document's first/second TP phases.
 
+Market previews continue refreshing when trading is disabled; hedge pause and
+weekend entry blocks also leave previews active. Regression cases change premium
+and time-value limits while blocked, verify fresh quotes/reasons, and verify that
+no orders, sessions or wallet changes occur. Failed refreshes clear obsolete
+preview reasons; unavailable straddle quotes cannot pass premium/gap conditions.
+
 Hedge TP closes the initial futures leg. The first TP creates an option target at twice
 its entry premium. The second creates a futures re-entry limit at strike minus premium
 (bullish) or strike plus premium (bearish). Scheduled/manual exits cancel pending orders

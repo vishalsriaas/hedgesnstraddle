@@ -178,10 +178,20 @@ class HedgeEngine:
 
         current_session_key = get_current_binance_session_date()
 
+        entry_block_reason = None
+        if cfg.get("BOT_ENABLED", "1") != "1" or cfg.get("ENGINE_ENABLED", "1") != "1":
+            entry_block_reason = "Trading disabled; market previews remain active"
+        elif cfg.get("GLOBAL_PAUSE", "0") == "1":
+            entry_block_reason = "New entries paused; market previews remain active"
+
         # Determine Idle / Rejection Reasons for Slot 1
         s1_idle_reason = None
         if not self.slot1_session_id:
-            if getattr(self, "slot1_completed", False) or self.slot1_traded_session_key == current_session_key:
+            if entry_block_reason:
+                s1_idle_reason = entry_block_reason
+            elif slot1_cfg and not slot1_cfg.enabled:
+                s1_idle_reason = "Trader disabled; market previews remain active"
+            elif getattr(self, "slot1_completed", False) or self.slot1_traded_session_key == current_session_key:
                 s1_idle_reason = f"Session {current_session_key} Traded & Completed"
             elif is_weekend_session() and cfg.get("SKIP_WEEKENDS", "1") == "1":
                 s1_idle_reason = "Weekend Expiry Skipped (Sat/Sun)"
@@ -199,7 +209,11 @@ class HedgeEngine:
         # Determine Idle / Rejection Reasons for Slot 2
         s2_idle_reason = None
         if not self.slot2_session_id:
-            if getattr(self, "slot2_completed", False) or self.slot2_traded_session_key == current_session_key:
+            if entry_block_reason:
+                s2_idle_reason = entry_block_reason
+            elif slot2_cfg and not slot2_cfg.enabled:
+                s2_idle_reason = "Trader disabled; market previews remain active"
+            elif getattr(self, "slot2_completed", False) or self.slot2_traded_session_key == current_session_key:
                 s2_idle_reason = f"Session {current_session_key} Traded & Completed"
             elif is_weekend_session() and cfg.get("SKIP_WEEKENDS", "1") == "1":
                 s2_idle_reason = "Weekend Expiry Skipped (Sat/Sun)"
@@ -835,7 +849,14 @@ class HedgeEngine:
         active = self.slot1_session_id or self.slot2_session_id
         if not active and (not enabled or paused or weekend):
             self.state = "DISABLED" if not enabled else ("PAUSED" if paused else "SKIP_WEEKEND")
-            return
+        # Entry controls must not freeze monitoring prices or selection reasons.
+        # Clear old previews first so a failed fetch cannot retain old thresholds.
+        for slot in (1, 2):
+            setattr(self, f"preview_slot{slot}_selected", None)
+            for label in ("put", "call"):
+                setattr(self, f"preview_slot{slot}_{label}_strike", 0.0)
+                setattr(self, f"preview_slot{slot}_{label}_mark", 0.0)
+                setattr(self, f"preview_slot{slot}_{label}_reason", "Market data unavailable; awaiting refresh")
         self.last_spot_price = await get_btc_spot_price()
         self.last_futures_mark = await get_btc_futures_mark_price()
         try:
@@ -901,8 +922,8 @@ class HedgeEngine:
             except ValueError as exc:
                 logger.warning("Slot %s entry deferred: %s", slot, exc)
         active = self.slot1_session_id or self.slot2_session_id
-        self.state = "IN_TRADE" if active else ("DISABLED" if not enabled else "PAUSED" if paused else "ENTRY_WINDOW" if window_open else "IDLE")
-        if not active:
+        self.state = "IN_TRADE" if active else ("DISABLED" if not enabled else "PAUSED" if paused else "SKIP_WEEKEND" if weekend else "ENTRY_WINDOW" if window_open else "IDLE")
+        if not active and enabled and not paused and not weekend:
             self.flush_pending_config_on_session_close(db)
 
     async def run_loop(self):

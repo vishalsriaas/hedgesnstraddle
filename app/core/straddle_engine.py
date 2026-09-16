@@ -66,6 +66,7 @@ class StraddleEngine:
         self.cond_same_strike_valid: bool = True
         self.cond_itm_otm_valid: bool = True
         self.cond_weekend_skip: bool = False
+        self.preview_data_available = False
         
         self._task: Optional[asyncio.Task] = None
 
@@ -202,8 +203,8 @@ class StraddleEngine:
         
         # Check conditions
         self.cond_time_window_valid = (w_start_rel <= now_rel <= w_end_rel)
-        self.cond_premium_valid = (self.combined_premium <= max_premium_limit)
-        self.cond_premium_gap_valid = (abs(self.current_call_mark - self.current_put_mark) <= max_gap_limit)
+        self.cond_premium_valid = self.preview_data_available and (self.combined_premium <= max_premium_limit)
+        self.cond_premium_gap_valid = self.preview_data_available and (abs(self.current_call_mark - self.current_put_mark) <= max_gap_limit)
         
         # ITM / OTM verification: one must be <= spot, the other >= spot at same strike K
         self.cond_itm_otm_valid = True  # Inherently true for same strike model
@@ -222,6 +223,7 @@ class StraddleEngine:
         
         return {
             "state": self.state,
+            "preview_data_available": self.preview_data_available,
             "server_time": now_time_full,
             "last_spot_price": self.last_spot_price,
             "last_futures_mark": self.last_futures_mark,
@@ -262,9 +264,8 @@ class StraddleEngine:
                 self.restore_session(db)
                 if not bot_enabled and not self.active_session_id and self.state != "SQUAREOFF":
                     self.state = "DISABLED"
-                    db.close()
-                    await asyncio.sleep(2.0)
-                    continue
+
+                self.preview_data_available = False
 
                 # Query live metrics
                 spot = await get_btc_spot_price()
@@ -285,6 +286,7 @@ class StraddleEngine:
                 self.current_call_mark = call_mark
                 self.current_put_mark = put_mark
                 self.nearest_expiry = expiry
+                self.preview_data_available = True
                 if not self.active_session_id:
                     oco_limit_multiplier = float(cfg.get("OCO_LIMIT_MULTIPLIER", "1.0"))
                     self.combined_premium = call_mark + put_mark
@@ -853,6 +855,12 @@ class StraddleEngine:
                 db.close()
             except Exception as e:
                 db.rollback()
+                self.preview_data_available = False
+                if not self.active_session_id:
+                    self.current_call_mark = self.current_put_mark = 0.0
+                    self.current_strike = self.combined_premium = 0.0
+                    self.short_limit_price = self.long_limit_price = 0.0
+                    self.nearest_expiry = "N/A"
                 logger.error("Error in Straddle Engine loop: %s", str(e), exc_info=True)
             finally:
                 db.close()

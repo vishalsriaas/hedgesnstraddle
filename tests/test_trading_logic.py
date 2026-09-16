@@ -187,6 +187,85 @@ class TradingLogicTests(unittest.TestCase):
         self.run_straddle(bot)
         self.assertEqual(bot.state, 'LIMITS_PLACED')
 
+    def test_disabled_straddle_refreshes_preview_without_trading(self):
+        self.config(StraddleConfig, 'BOT_ENABLED', 0)
+        bot = se.StraddleEngine()
+        self.run_straddle(bot)
+        self.price = 60050
+        self.quotes = [dict(symbol=q['symbol'], markPrice='200') for q in self.quotes]
+        self.run_straddle(bot)
+        snapshot = bot.get_live_monitoring_snapshot(self.db)
+        self.assertEqual(snapshot['state'], 'DISABLED')
+        self.assertEqual(snapshot['last_spot_price'], 60050)
+        self.assertEqual(snapshot['combined_premium'], 400)
+        self.assertTrue(snapshot['preview_data_available'])
+        self.assertEqual(self.db.query(StraddleSession).count(), 0)
+        self.assertEqual(self.db.query(StraddleTradeOrder).count(), 0)
+        self.assertEqual(self.db.get(StraddleConfig, 'PAPER_WALLET_USDT').value, '100000')
+        self.quotes = []
+        with self.assertLogs(se.logger, level='ERROR'):
+            self.run_straddle(bot)
+        snapshot = bot.get_live_monitoring_snapshot(self.db)
+        self.assertFalse(snapshot['preview_data_available'])
+        self.assertFalse(snapshot['cond_premium_valid'])
+        self.assertFalse(snapshot['cond_premium_gap_valid'])
+        self.assertEqual(snapshot['current_call_mark'], 0)
+
+    def test_hedge_preview_refreshes_under_every_entry_block(self):
+        for control, value, state in [('BOT_ENABLED', 0, 'DISABLED'),
+                                       ('ENGINE_ENABLED', 0, 'DISABLED'),
+                                       ('GLOBAL_PAUSE', 1, 'PAUSED'),
+                                       ('SKIP_WEEKENDS', 1, 'SKIP_WEEKEND')]:
+            with self.subTest(control=control):
+                for key, default in [('BOT_ENABLED', 1), ('ENGINE_ENABLED', 1),
+                                     ('GLOBAL_PAUSE', 0), ('SKIP_WEEKENDS', 0)]:
+                    self.config(HedgeConfig, key, default)
+                self.config(HedgeConfig, control, value)
+                for cfg in self.db.query(HedgeStrategyConfig).all():
+                    cfg.max_premium, cfg.max_time_value = 50, 10
+                self.db.commit()
+                self.quotes = [dict(symbol='BTC-260908-60000-P', markPrice='100')]
+                bot = he.HedgeEngine()
+                with patch.object(he, 'is_weekend_session', return_value=True):
+                    asyncio.run(bot.tick(self.db))
+                    self.assertIn('premium <= 50 and TV <= 10', bot.preview_slot1_put_reason)
+                    for cfg in self.db.query(HedgeStrategyConfig).all():
+                        cfg.max_premium, cfg.max_time_value = 900, 700
+                    self.db.commit()
+                    self.quotes[0]['markPrice'] = '200'
+                    asyncio.run(bot.tick(self.db))
+                    snap = bot.get_live_monitoring_snapshot(self.db)
+                self.assertEqual(bot.state, state)
+                for slot in ('slot1', 'slot2'):
+                    self.assertEqual(snap[slot]['bullish']['option_mark'], 200)
+                    self.assertEqual(snap[slot]['bullish']['selection_reason'], '')
+                    self.assertTrue(snap[slot]['bullish']['rule_b_valid'])
+                if state == 'DISABLED':
+                    self.assertIn('Trading disabled', snap['slot1']['idle_reason'])
+                if state == 'PAUSED':
+                    self.assertIn('paused', snap['slot1']['idle_reason'])
+                self.assertEqual(self.db.query(HedgeSession).count(), 0)
+                self.assertEqual(self.db.query(HedgeTradeOrder).count(), 0)
+                self.assertEqual(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value, '100000')
+
+    def test_hedge_failed_refresh_removes_old_preview_reason(self):
+        self.config(HedgeConfig, 'BOT_ENABLED', 0)
+        self.db.query(HedgeStrategyConfig).update({'max_premium': 50})
+        self.db.commit()
+        bot = he.HedgeEngine()
+        asyncio.run(bot.tick(self.db))
+        self.assertIn('premium <= 50', bot.preview_slot1_put_reason)
+        self.db.query(HedgeStrategyConfig).update({'max_premium': 900})
+        self.db.commit()
+        with patch.object(he, 'get_btc_spot_price', AsyncMock(side_effect=ValueError('offline'))):
+            with self.assertRaises(ValueError):
+                asyncio.run(bot.tick(self.db))
+        snap = bot.get_live_monitoring_snapshot(self.db)['slot1']['bullish']
+        self.assertEqual(snap['option_mark'], 0)
+        self.assertIn('Market data unavailable', snap['selection_reason'])
+        self.assertNotIn('50', snap['selection_reason'])
+        self.assertEqual(self.db.query(HedgeSession).count(), 0)
+
     def test_straddle_missing_pair_and_wrong_expiry_are_rejected(self):
         bot = se.StraddleEngine()
         self.quotes = [dict(symbol='BTC-260909-60000-C', markPrice='100')]
