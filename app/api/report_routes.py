@@ -31,8 +31,9 @@ def export_trade_history_csv(
 
     hedge_sessions = db.query(HedgeSession).order_by(HedgeSession.id.desc()).all()
     for h in hedge_sessions:
+        expiry_sym = f"{h.symbol} ({h.expiry_session})" if h.expiry_session else h.symbol
         writer.writerow([
-            "Hedge Trader", h.id, h.symbol, h.status,
+            "Hedge Trader", h.id, expiry_sym, h.status,
             f"${h.bull_entry:,.2f}", f"${h.realized_pnl:,.2f}",
             h.exit_reason or "", h.created_at.strftime("%Y-%m-%d %H:%M:%S") if h.created_at else ""
         ])

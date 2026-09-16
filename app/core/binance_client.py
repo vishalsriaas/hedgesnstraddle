@@ -2,6 +2,7 @@ import httpx
 import logging
 import time
 import re
+import math
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger("hedgesnstraddle.binance_client")
@@ -14,6 +15,16 @@ _price_cache: Dict[str, tuple] = {}
 
 # Track when each key is rate-limited so we back off entirely
 _rate_limit_until: Dict[str, float] = {}
+
+
+MAX_STALE_SECONDS = 30.0
+
+
+def cached_quote(key):
+    cached = _price_cache.get(key)
+    if cached and time.time() - cached[1] <= MAX_STALE_SECONDS:
+        return cached[0]
+    raise ValueError(f"DATA_GAP: {key} quote is missing or older than {MAX_STALE_SECONDS:g}s")
 
 
 async def get_btc_futures_mark_price() -> float:
@@ -29,13 +40,17 @@ async def get_btc_futures_mark_price() -> float:
                 params={"symbol": "BTCUSDT"}
             )
             if resp.status_code == 200:
-                price = float(resp.json().get("markPrice", 64000.0))
-                _price_cache["BTCUSDT"] = (price, now)
-                return price
+                price_val = resp.json().get("markPrice")
+                if price_val is not None:
+                    price = float(price_val)
+                    if not math.isfinite(price) or price <= 0:
+                        raise ValueError("Invalid market price")
+                    _price_cache["BTCUSDT"] = (price, now)
+                    return price
     except Exception as e:
-        logger.warning("Error fetching Binance futures mark price: %s", str(e))
+        logger.error("DATA_GAP: Error fetching Binance futures mark price: %s", str(e))
 
-    return float(_price_cache.get("BTCUSDT", (64000.0, 0.0))[0])
+    return float(cached_quote("BTCUSDT"))
 
 
 async def get_btc_spot_price() -> float:
@@ -51,13 +66,17 @@ async def get_btc_spot_price() -> float:
                 params={"symbol": "BTCUSDT"}
             )
             if resp.status_code == 200:
-                price = float(resp.json().get("price", 64000.0))
-                _price_cache["BTC_SPOT"] = (price, now)
-                return price
+                price_val = resp.json().get("price")
+                if price_val is not None:
+                    price = float(price_val)
+                    if not math.isfinite(price) or price <= 0:
+                        raise ValueError("Invalid market price")
+                    _price_cache["BTC_SPOT"] = (price, now)
+                    return price
     except Exception as e:
-        logger.warning("Error fetching Binance spot price: %s", str(e))
+        logger.error("DATA_GAP: Error fetching Binance spot price: %s", str(e))
 
-    return float(_price_cache.get("BTC_SPOT", (64000.0, 0.0))[0])
+    return float(cached_quote("BTC_SPOT"))
 
 
 async def get_btc_options_tickers() -> List[Dict[str, Any]]:
@@ -88,9 +107,13 @@ async def get_btc_options_tickers() -> List[Dict[str, Any]]:
             else:
                 logger.warning("Binance EAPI ticker returned HTTP %d", resp.status_code)
     except Exception as e:
-        logger.warning("Error fetching Binance options tickers: %s", str(e))
+        logger.error("DATA_GAP: Error fetching Binance options tickers: %s", str(e))
 
-    return _price_cache.get(cache_key, ([], 0.0))[0]
+    res = cached_quote(cache_key)
+    if not res:
+        logger.error("DATA_GAP: No cached or live Binance options tickers available.")
+        raise ValueError("DATA_GAP: Options tickers feed failed")
+    return res
 
 
 async def get_btc_options_mark_prices() -> List[Dict[str, Any]]:
@@ -117,7 +140,7 @@ async def get_btc_options_mark_prices() -> List[Dict[str, Any]]:
             "Options /mark endpoint rate-limited; using cached data (ban until %s)",
             time.strftime("%H:%M:%S", time.localtime(ban_until))
         )
-        return _price_cache.get(cache_key, ([], 0.0))[0]
+        return cached_quote(cache_key)
 
     # 5-second cache (safe: /eapi/v1/mark costs 5 weight; budget is 6,000/min = 20 calls/sec headroom)
     if cache_key in _price_cache and (now - _price_cache[cache_key][1]) < 5.0:
@@ -168,7 +191,10 @@ async def get_btc_options_mark_prices() -> List[Dict[str, Any]]:
                 )
 
     except Exception as e:
-        logger.warning("Error fetching Binance options mark prices: %s", str(e))
+        logger.error("DATA_GAP: Error fetching Binance options mark prices: %s", str(e))
 
-    # Return last good cached data
-    return _price_cache.get(cache_key, ([], 0.0))[0]
+    res = cached_quote(cache_key)
+    if not res:
+        logger.error("DATA_GAP: No cached or live Binance options mark prices available.")
+        raise ValueError("DATA_GAP: Options mark prices feed failed")
+    return res

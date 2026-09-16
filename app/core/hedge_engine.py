@@ -1,16 +1,20 @@
 import asyncio
 import logging
+import json
+import math
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import (
     HedgeConfig, HedgeStrategyConfig, PendingConfig, ConfigAuditLog, HedgeSession, 
-    HedgeTradeOrder, HedgeFill, HedgeOpenPosition, HedgePaperLedgerEntry
+    HedgeTradeOrder, HedgeFill, HedgeOpenPosition, HedgePaperLedgerEntry, HedgeSessionEvent, HedgeRuntimeCommand
 )
 from app.core.binance_client import (
     get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_mark_prices
 )
+
+from app.core.market_data import option_mark
 
 logger = logging.getLogger("hedgesnstraddle.hedge_engine")
 
@@ -78,8 +82,11 @@ class HedgeEngine:
         self.tp_rank_1_slot: Optional[str] = None  # '1st Trader' or '2nd Trader'
         self.tp_rank_2_slot: Optional[str] = None
         
-        self.last_futures_mark: float = 64000.0
-        self.last_spot_price: float = 64000.0
+        self.option_quotes = []
+        self.slot1_completed = False
+        self.slot2_completed = False
+        self.last_futures_mark: float = 0.0
+        self.last_spot_price: float = 0.0
 
     def load_config(self, db: Session) -> Dict[str, str]:
         configs = db.query(HedgeConfig).all()
@@ -148,9 +155,9 @@ class HedgeEngine:
         s1_max_tv = slot1_cfg.max_time_value if slot1_cfg else 229.0
         s1_qty = slot1_cfg.contract_qty if slot1_cfg else 1.0
 
-        s1_put_strk = getattr(self, "preview_slot1_put_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s1_put_strk = getattr(self, "preview_slot1_put_strike", 0.0)
         s1_put_mark = getattr(self, "preview_slot1_put_mark", 0.0)
-        s1_call_strk = getattr(self, "preview_slot1_call_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s1_call_strk = getattr(self, "preview_slot1_call_strike", 0.0)
         s1_call_mark = getattr(self, "preview_slot1_call_mark", 0.0)
 
         s1_put_tv = self.calculate_time_value(s1_put_mark, s1_put_strk, "PUT", self.last_spot_price)
@@ -161,9 +168,9 @@ class HedgeEngine:
         s2_max_tv = slot2_cfg.max_time_value if slot2_cfg else 229.0
         s2_qty = slot2_cfg.contract_qty if slot2_cfg else 1.0
 
-        s2_put_strk = getattr(self, "preview_slot2_put_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s2_put_strk = getattr(self, "preview_slot2_put_strike", 0.0)
         s2_put_mark = getattr(self, "preview_slot2_put_mark", 0.0)
-        s2_call_strk = getattr(self, "preview_slot2_call_strike", round(self.last_futures_mark / 250.0) * 250.0)
+        s2_call_strk = getattr(self, "preview_slot2_call_strike", 0.0)
         s2_call_mark = getattr(self, "preview_slot2_call_mark", 0.0)
 
         s2_put_tv = self.calculate_time_value(s2_put_mark, s2_put_strk, "PUT", self.last_spot_price)
@@ -184,6 +191,8 @@ class HedgeEngine:
                 s1_idle_reason = f"Option Mark (${max(s1_put_mark, s1_call_mark):.2f}) > Max Prem Cap (${s1_max_prem:.2f})"
             elif s1_put_tv > s1_max_tv and s1_call_tv > s1_max_tv:
                 s1_idle_reason = f"Time Value (${max(s1_put_tv, s1_call_tv):.2f}) > TV Cap (${s1_max_tv:.2f})"
+            elif s1_put_mark <= 0 and s1_call_mark <= 0:
+                s1_idle_reason = "No qualifying ITM option within 24h expiry and premium/TV limits"
             else:
                 s1_idle_reason = "Awaiting Market Condition Trigger"
 
@@ -196,12 +205,14 @@ class HedgeEngine:
                 s2_idle_reason = "Weekend Expiry Skipped (Sat/Sun)"
             elif not (w2_start_rel <= now_rel <= get_session_relative_minutes(w2_end)):
                 s2_idle_reason = f"Outside Window Range ({w2_start} - {w2_end})"
-            elif self.slot1_session_id and self.slot1_strike is not None and s2_put_strk < self.slot1_strike:
-                s2_idle_reason = f"Rule C Strike Clash (${s2_put_strk:.0f} < ${self.slot1_strike:.0f})"
+            elif not getattr(self, "preview_slot2_selected", None) and getattr(self, "preview_slot2_required_direction", "Auto") in ("Bullish", "Bearish"):
+                s2_idle_reason = f"Waiting for a qualifying {self.preview_slot2_required_direction} contract: required Trader 2 direction"
             elif s2_put_mark > s2_max_prem and s2_call_mark > s2_max_prem:
                 s2_idle_reason = f"Option Mark (${max(s2_put_mark, s2_call_mark):.2f}) > Max Prem Cap (${s2_max_prem:.2f})"
             elif s2_put_tv > s2_max_tv and s2_call_tv > s2_max_tv:
                 s2_idle_reason = f"Time Value (${max(s2_put_tv, s2_call_tv):.2f}) > TV Cap (${s2_max_tv:.2f})"
+            elif s2_put_mark <= 0 and s2_call_mark <= 0:
+                s2_idle_reason = "No qualifying ITM option within 24h expiry and premium/TV limits"
             else:
                 s2_idle_reason = "Awaiting Market Condition Trigger"
 
@@ -219,9 +230,19 @@ class HedgeEngine:
             fut_entry1 = fut_pos1.entry_price if (fut_pos1 and fut_pos1.entry_price > 0) else getattr(self, "slot1_fut_entry", self.last_futures_mark)
             fut_tp1 = (fut_entry1 + opt_mark1) if dir_str1 == "Bullish" else (fut_entry1 - opt_mark1)
             
+            held_option1 = db.query(HedgeOpenPosition).filter(
+                HedgeOpenPosition.session_id == self.slot1_session_id,
+                HedgeOpenPosition.symbol != "BTC-USDT-FUTURES").first()
+            s1_qty = held_option1.qty if held_option1 else (fut_pos1.qty if fut_pos1 else s1_qty)
+            try:
+                held_mark1 = option_mark(self.option_quotes, held_option1.symbol) if held_option1 else None
+            except ValueError:
+                held_mark1 = None
             pnl_fut1 = (self.last_futures_mark - fut_entry1) * s1_qty if dir_str1 == "Bullish" else (fut_entry1 - self.last_futures_mark) * s1_qty
-            opt_cur_mark1 = s1_put_mark if dir_str1 == "Bullish" else s1_call_mark
-            pnl_opt1 = (opt_cur_mark1 - opt_mark1) * s1_qty
+            if fut_pos1 is None:
+                pnl_fut1 = 0.0
+            opt_cur_mark1 = held_mark1
+            pnl_opt1 = (opt_cur_mark1 - opt_mark1) * s1_qty if opt_cur_mark1 is not None else 0.0
             pnl_total1 = pnl_fut1 + pnl_opt1
             pnl_pct1 = (pnl_total1 / (fut_entry1 * s1_qty)) * 100 if (fut_entry1 * s1_qty) > 0 else 0.0
 
@@ -234,7 +255,8 @@ class HedgeEngine:
                 "option_entry_mark": opt_mark1,
                 "futures_entry": fut_entry1,
                 "futures_tp": fut_tp1,
-                "pnl_usdt": round(pnl_total1, 2),
+                "pnl_usdt": round(pnl_total1, 2) if held_mark1 is not None else None,
+                "data_available": held_mark1 is not None,
                 "pnl_pct": round(pnl_pct1, 2),
                 "tp_rank": rank1
             }
@@ -253,9 +275,19 @@ class HedgeEngine:
             fut_entry2 = fut_pos2.entry_price if (fut_pos2 and fut_pos2.entry_price > 0) else getattr(self, "slot2_fut_entry", self.last_futures_mark)
             fut_tp2 = (fut_entry2 + opt_mark2) if dir_str2 == "Bullish" else (fut_entry2 - opt_mark2)
             
+            held_option2 = db.query(HedgeOpenPosition).filter(
+                HedgeOpenPosition.session_id == self.slot2_session_id,
+                HedgeOpenPosition.symbol != "BTC-USDT-FUTURES").first()
+            s2_qty = held_option2.qty if held_option2 else (fut_pos2.qty if fut_pos2 else s2_qty)
+            try:
+                held_mark2 = option_mark(self.option_quotes, held_option2.symbol) if held_option2 else None
+            except ValueError:
+                held_mark2 = None
             pnl_fut2 = (self.last_futures_mark - fut_entry2) * s2_qty if dir_str2 == "Bullish" else (fut_entry2 - self.last_futures_mark) * s2_qty
-            opt_cur_mark2 = s2_put_mark if dir_str2 == "Bullish" else s2_call_mark
-            pnl_opt2 = (opt_cur_mark2 - opt_mark2) * s2_qty
+            if fut_pos2 is None:
+                pnl_fut2 = 0.0
+            opt_cur_mark2 = held_mark2
+            pnl_opt2 = (opt_cur_mark2 - opt_mark2) * s2_qty if opt_cur_mark2 is not None else 0.0
             pnl_total2 = pnl_fut2 + pnl_opt2
             pnl_pct2 = (pnl_total2 / (fut_entry2 * s2_qty)) * 100 if (fut_entry2 * s2_qty) > 0 else 0.0
 
@@ -268,7 +300,8 @@ class HedgeEngine:
                 "option_entry_mark": opt_mark2,
                 "futures_entry": fut_entry2,
                 "futures_tp": fut_tp2,
-                "pnl_usdt": round(pnl_total2, 2),
+                "pnl_usdt": round(pnl_total2, 2) if held_mark2 is not None else None,
+                "data_available": held_mark2 is not None,
                 "pnl_pct": round(pnl_pct2, 2),
                 "tp_rank": rank2
             }
@@ -297,24 +330,28 @@ class HedgeEngine:
                 "filled_direction": getattr(self, "slot1_direction", None) if self.slot1_session_id else None,
                 "filled_strike": self.slot1_strike or 0.0,
                 "filled_opt_mark": self.slot1_option_mark or 0.0,
-                "filled_fut_entry": self.last_futures_mark if self.slot1_session_id else 0.0,
-                "filled_fut_tp": (self.last_futures_mark + (self.slot1_option_mark or 0.0)) if (getattr(self, "slot1_direction", "Bullish") == "Bullish") else (self.last_futures_mark - (self.slot1_option_mark or 0.0)),
+                "filled_fut_entry": getattr(self, "slot1_fut_entry", 0.0) if self.slot1_session_id else 0.0,
+                "filled_fut_tp": s1_active_trade["futures_tp"] if s1_active_trade else 0.0,
                 "bullish": {
                     "strike": s1_put_strk,
                     "option_type": "PUT",
+                    "selection_reason": getattr(self, "preview_slot1_put_reason", ""),
                     "option_mark": s1_put_mark,
+                    "estimated_option_cost": round(s1_put_mark * (slot1_cfg.contract_qty if slot1_cfg else 1.0), 2) if s1_put_mark > 0 else None,
                     "time_value": round(s1_put_tv, 2),
-                    "rule_b_valid": (s1_put_mark <= s1_max_prem) if s1_put_mark > 0 else True,
-                    "tv_valid": (s1_put_tv <= s1_max_tv) if s1_put_mark > 0 else True,
+                    "rule_b_valid": (s1_put_mark <= s1_max_prem) if s1_put_mark > 0 else False,
+                    "tv_valid": (s1_put_tv <= s1_max_tv) if s1_put_mark > 0 else False,
                     "futures_tp": self.last_futures_mark + s1_put_mark
                 },
                 "bearish": {
                     "strike": s1_call_strk,
                     "option_type": "CALL",
+                    "selection_reason": getattr(self, "preview_slot1_call_reason", ""),
                     "option_mark": s1_call_mark,
+                    "estimated_option_cost": round(s1_call_mark * (slot1_cfg.contract_qty if slot1_cfg else 1.0), 2) if s1_call_mark > 0 else None,
                     "time_value": round(s1_call_tv, 2),
-                    "rule_b_valid": (s1_call_mark <= s1_max_prem) if s1_call_mark > 0 else True,
-                    "tv_valid": (s1_call_tv <= s1_max_tv) if s1_call_mark > 0 else True,
+                    "rule_b_valid": (s1_call_mark <= s1_max_prem) if s1_call_mark > 0 else False,
+                    "tv_valid": (s1_call_tv <= s1_max_tv) if s1_call_mark > 0 else False,
                     "futures_tp": self.last_futures_mark - s1_call_mark
                 }
             },
@@ -332,46 +369,39 @@ class HedgeEngine:
                 "filled_direction": getattr(self, "slot2_direction", None) if self.slot2_session_id else None,
                 "filled_strike": self.slot2_strike or 0.0,
                 "filled_opt_mark": self.slot2_option_mark or 0.0,
-                "filled_fut_entry": self.last_futures_mark if self.slot2_session_id else 0.0,
-                "filled_fut_tp": (self.last_futures_mark + (self.slot2_option_mark or 0.0)) if (getattr(self, "slot2_direction", "Bullish") == "Bullish") else (self.last_futures_mark - (self.slot2_option_mark or 0.0)),
+                "filled_fut_entry": getattr(self, "slot2_fut_entry", 0.0) if self.slot2_session_id else 0.0,
+                "filled_fut_tp": s2_active_trade["futures_tp"] if s2_active_trade else 0.0,
                 "bullish": {
                     "strike": s2_put_strk,
                     "option_type": "PUT",
+                    "selection_reason": getattr(self, "preview_slot2_put_reason", ""),
                     "option_mark": s2_put_mark,
+                    "estimated_option_cost": round(s2_put_mark * (slot2_cfg.contract_qty if slot2_cfg else 1.0), 2) if s2_put_mark > 0 else None,
                     "time_value": round(s2_put_tv, 2),
-                    "rule_b_valid": (s2_put_mark <= s2_max_prem) if s2_put_mark > 0 else True,
-                    "tv_valid": (s2_put_tv <= s2_max_tv) if s2_put_mark > 0 else True,
+                    "rule_b_valid": (s2_put_mark <= s2_max_prem) if s2_put_mark > 0 else False,
+                    "tv_valid": (s2_put_tv <= s2_max_tv) if s2_put_mark > 0 else False,
                     "futures_tp": self.last_futures_mark + s2_put_mark
                 },
                 "bearish": {
                     "strike": s2_call_strk,
                     "option_type": "CALL",
+                    "selection_reason": getattr(self, "preview_slot2_call_reason", ""),
                     "option_mark": s2_call_mark,
+                    "estimated_option_cost": round(s2_call_mark * (slot2_cfg.contract_qty if slot2_cfg else 1.0), 2) if s2_call_mark > 0 else None,
                     "time_value": round(s2_call_tv, 2),
-                    "rule_b_valid": (s2_call_mark <= s2_max_prem) if s2_call_mark > 0 else True,
-                    "tv_valid": (s2_call_tv <= s2_max_tv) if s2_call_mark > 0 else True,
+                    "rule_b_valid": (s2_call_mark <= s2_max_prem) if s2_call_mark > 0 else False,
+                    "tv_valid": (s2_call_tv <= s2_max_tv) if s2_call_mark > 0 else False,
                     "futures_tp": self.last_futures_mark - s2_call_mark
                 }
             },
             "cond_time_window_valid": cond_time_window_valid,
-            "cond_rule_a_valid": True,
-            "cond_rule_b_valid": True,
-            "cond_rule_c_valid": True,
-            "cond_max_spend_valid": True
+            "cond_rule_a_valid": any(m > 0 for m in (s1_put_mark, s1_call_mark, s2_put_mark, s2_call_mark)),
+            "cond_rule_b_valid": (0 < s1_put_mark <= s1_max_prem or 0 < s1_call_mark <= s1_max_prem),
         }
 
     def get_role_strategy_config(self, db: Session, role_name: str) -> Optional[HedgeStrategyConfig]:
         """Fetch dynamic Hedge Strategy Config parameters by role name ('1st Trader' vs '2nd Trader')."""
         return db.query(HedgeStrategyConfig).filter(HedgeStrategyConfig.strategy_name == role_name).first()
-
-    def validate_option_spend(self, option_ask: float = 0.0, qty: float = 1.0, max_option_spend: float = 400.0, option_mark: Optional[float] = None) -> bool:
-        """Enforces MAX_OPTION_SPEND limit: reject option purchase if (cost) > MAX_OPTION_SPEND."""
-        price = option_mark if option_mark is not None else option_ask
-        total_cost = price * qty
-        if total_cost > max_option_spend:
-            logger.warning("Option spend $%.2f exceeds limit $%.2f - REJECTED", total_cost, max_option_spend)
-            return False
-        return True
 
     def flush_pending_config_on_session_close(self, db: Session):
         pending_items = db.query(PendingConfig).filter(PendingConfig.config_type == "HEDGE").all()
@@ -404,50 +434,46 @@ class HedgeEngine:
         db.commit()
         logger.info("Successfully applied pending hedge configurations!")
 
-    async def find_nearest_itm_option(self, futures_mark: float, direction: str) -> Tuple[float, float, str, str]:
-        """
-        Rule A: Finds nearest In-The-Money (ITM) option contract for today's expiry.
-        Bullish -> Nearest PUT (Strike K >= futures_mark)
-        Bearish -> Nearest CALL (Strike K <= futures_mark)
-        Returns: (strike_price, option_mark, expiry_sym, symbol)
-        """
-        mark_prices = await get_btc_options_mark_prices()
-        target_type = "P" if direction == "Bullish" else "C"
+    def select_itm_option(self, quotes, spot_price, direction, max_premium, max_time_value, now):
+        """Select minimum TV from one snapshot, with 0 < expiry remaining < 24h.
 
+        Auto compares calls and puts together. Equal TV uses symbol order solely
+        for deterministic results.
+        """
+        if not math.isfinite(spot_price) or spot_price <= 0:
+            raise ValueError("DATA_GAP: Invalid BTC spot price")
         candidates = []
-        if mark_prices:
-            for item in mark_prices:
-                sym = item.get("symbol", "")
-                parts = sym.split("-")
-                if len(parts) == 4 and parts[0] == "BTC":
-                    exp_sym, strk_str, opt_type = parts[1], parts[2], parts[3]
-                    if opt_type == target_type:
-                        try:
-                            strk = float(strk_str)
-                            mark_p = float(item.get("markPrice", 0.0))
-                            candidates.append((strk, mark_p, exp_sym, opt_type, sym))
-                        except ValueError:
-                            pass
-
-        if candidates:
-            # Pick nearest active expiry from available Binance expiries
-            expiries = sorted(list(set(c[2] for c in candidates)))
-            nearest_expiry = expiries[0]
-            exp_candidates = [c for c in candidates if c[2] == nearest_expiry]
-
-            if direction == "Bullish":
-                itm = [c for c in exp_candidates if c[0] >= futures_mark]
-                best = min(itm, key=lambda x: x[0]) if itm else max(exp_candidates, key=lambda x: x[0])
-            else:
-                itm = [c for c in exp_candidates if c[0] <= futures_mark]
-                best = max(itm, key=lambda x: x[0]) if itm else min(exp_candidates, key=lambda x: x[0])
-
-            return (best[0], best[1], best[2], best[4])
-
-        now_dt = datetime.now(ist)
-        today_sym = now_dt.strftime("%y%m%d")
-        strike = round(futures_mark / 250.0) * 250.0
-        return (strike, 150.0, today_sym, f"BTC-{today_sym}-{int(strike)}-{target_type}")
+        for quote in quotes:
+            if not isinstance(quote, dict):
+                continue
+            symbol = quote.get("symbol", "")
+            if not isinstance(symbol, str):
+                continue
+            parts = symbol.split("-")
+            if len(parts) != 4 or parts[0] != "BTC" or parts[3] not in ("C", "P"):
+                continue
+            expiry_code, strike_text, side = parts[1:]
+            try:
+                expiry = datetime.strptime(expiry_code, "%y%m%d").replace(hour=8, tzinfo=timezone.utc)
+                strike, premium = float(strike_text), float(quote.get("markPrice"))
+            except (ValueError, TypeError):
+                continue
+            if not timedelta(0) < expiry - now < timedelta(hours=24):
+                continue
+            if not math.isfinite(strike) or strike <= 0 or not math.isfinite(premium) or premium <= 0:
+                continue
+            if direction == "Bullish" and side != "P" or direction == "Bearish" and side != "C":
+                continue
+            # Preserve the existing inclusive ATM boundary, using spot for both sides.
+            if side == "P" and strike < spot_price or side == "C" and strike > spot_price:
+                continue
+            tv = self.calculate_time_value(premium, strike, side, spot_price)
+            if premium <= max_premium and tv <= max_time_value:
+                candidates.append((tv, symbol, strike, premium, expiry_code))
+        if not candidates:
+            raise ValueError("No ITM contract passes premium/TV limits with 0 < expiry remaining < 24h")
+        _, symbol, strike, premium, expiry_code = min(candidates)
+        return strike, premium, expiry_code, symbol
 
     def calculate_time_value(self, option_mark: float, strike: float, option_type: str, spot_price: float) -> float:
         """
@@ -468,9 +494,23 @@ class HedgeEngine:
         tv = self.calculate_time_value(option_mark, strike, option_type, spot_price)
         return tv <= max_time_value
 
+    def entry_direction(self, db, role_name, configured_direction):
+        """Trader 1's recorded entry locks Trader 2 to the opposite side for this expiry."""
+        if role_name == "2nd Trader":
+            first = db.query(HedgeSession).join(HedgeTradeOrder,
+                HedgeTradeOrder.session_id == HedgeSession.id).filter(
+                HedgeSession.expiry_session == get_current_binance_session_date(),
+                HedgeTradeOrder.trader_leg == "1st Trader",
+                HedgeTradeOrder.status == "FILLED",
+                HedgeTradeOrder.symbol != "BTC-USDT-FUTURES",
+                HedgeTradeOrder.side == "BUY").order_by(HedgeSession.id).first()
+            if first:
+                return "Bearish" if first.bull_entry else "Bullish"
+        return configured_direction or "Auto"
+
     async def execute_slot_entry(
         self, db: Session, role_name: str, role_config: HedgeStrategyConfig, 
-        futures_mark: float, spot_price: float
+        futures_mark: float, spot_price: float, *, quotes=None, snapshot_time=None
     ) -> Optional[int]:
         """
         Executes atomic slot trade: BUY Option @ option_mark + OPEN Futures @ futures_mark.
@@ -482,48 +522,35 @@ class HedgeEngine:
 
         current_session_key = get_current_binance_session_date()
 
-        # Strict Single-Trade Per Binance Expiry Session Lock
-        if role_name == "1st Trader":
-            if self.slot1_traded_session_key == current_session_key:
-                logger.info("1st Trader already traded for Binance Expiry Session [%s] - BLOCKED", current_session_key)
-                return None
-        else:
-            if self.slot2_traded_session_key == current_session_key:
-                logger.info("2nd Trader already traded for Binance Expiry Session [%s] - BLOCKED", current_session_key)
-                return None
-
-        # Determine direction: Check if explicit (Bullish/Bearish) or Auto (evaluate both)
-        pref_direction = role_config.direction or "Auto"
-        if pref_direction in ["Bullish", "Bearish"]:
-            strike, option_mark, expiry_sym, opt_symbol = await self.find_nearest_itm_option(futures_mark, pref_direction)
-            direction = pref_direction
-        else:
-            # Auto-detect direction: evaluate Bullish vs Bearish ITM options
-            strike_b, mark_b, exp_b, sym_b = await self.find_nearest_itm_option(futures_mark, "Bullish")
-            strike_r, mark_r, exp_r, sym_r = await self.find_nearest_itm_option(futures_mark, "Bearish")
-            
-            valid_b = (mark_b <= max_premium) and self.validate_time_value(mark_b, strike_b, "PUT", spot_price, max_tv)
-            valid_r = (mark_r <= max_premium) and self.validate_time_value(mark_r, strike_r, "CALL", spot_price, max_tv)
-
-            if valid_b and not valid_r:
-                direction, strike, option_mark, expiry_sym, opt_symbol = "Bullish", strike_b, mark_b, exp_b, sym_b
-            elif valid_r and not valid_b:
-                direction, strike, option_mark, expiry_sym, opt_symbol = "Bearish", strike_r, mark_r, exp_r, sym_r
-            else:
-                # Default to Bullish if both valid
-                direction, strike, option_mark, expiry_sym, opt_symbol = "Bullish", strike_b, mark_b, exp_b, sym_b
-
-        # Rule B: Premium Cap Check (option_mark <= max_premium) and Time Value Limit Check
-        if option_mark > max_premium:
-            logger.warning("Hedge Slot [%s] option_mark $%.2f > max_premium limit $%.2f - REJECTED", role_name, option_mark, max_premium)
+        cfg = self.load_config(db)
+        if (not role_config.enabled or cfg.get("BOT_ENABLED", "1") != "1"
+                or cfg.get("ENGINE_ENABLED", "1") != "1" or cfg.get("GLOBAL_PAUSE", "0") == "1"):
+            return None
+        if not math.isfinite(qty) or qty <= 0:
+            raise ValueError("Contract quantity must be positive")
+        if qty > float(cfg.get("Q_MAX_BTC", "1000")):
+            return None
+        existing = db.query(HedgeTradeOrder).join(
+            HedgeSession, HedgeTradeOrder.session_id == HedgeSession.id).filter(
+                HedgeSession.expiry_session == current_session_key,
+                HedgeTradeOrder.trader_leg == role_name).first()
+        if existing:
             return None
 
-        opt_type_str = "PUT" if direction == "Bullish" else "CALL"
-        if not self.validate_time_value(option_mark, strike, opt_type_str, spot_price, max_tv):
-            tv_calculated = self.calculate_time_value(option_mark, strike, opt_type_str, spot_price)
-            logger.warning("Hedge Slot [%s] Time Value $%.2f > max_time_value limit $%.2f - REJECTED", role_name, tv_calculated, max_tv)
+        if quotes is None:
+            quotes = await get_btc_options_mark_prices()
+        snapshot_time = snapshot_time or datetime.now(timezone.utc)
+        try:
+            strike, option_mark, expiry_sym, opt_symbol = self.select_itm_option(
+                quotes, spot_price, self.entry_direction(db, role_name, role_config.direction),
+                max_premium, max_tv, snapshot_time)
+        except ValueError as exc:
+            logger.info("%s entry skipped: %s", role_name, exc)
             return None
+        direction = "Bullish" if opt_symbol.endswith("-P") else "Bearish"
 
+        if not math.isfinite(option_mark) or option_mark <= 0:
+            return None
         now_ist = datetime.now(ist).replace(tzinfo=None)
 
         # Calculate Futures TP Level based on option_mark
@@ -534,7 +561,7 @@ class HedgeEngine:
         # 1. Create HedgeSession
         sess = HedgeSession(
             symbol="BTCUSDT",
-            expiry_session=current_session_key,
+            expiry_session=expiry_sym,
             status="Open",
             bull_entry=futures_mark if is_bullish else 0.0,
             bear_entry=futures_mark if not is_bullish else 0.0,
@@ -614,227 +641,281 @@ class HedgeEngine:
 
         return sess.id
 
-    async def execute_squareoff(self, db: Session, reason: str = "11:30 AM Universal Squareoff"):
-        """Forces 11:30 AM universal market squareoff for all open hedge slots."""
-        logger.info("Executing Hedge Universal Squareoff: %s", reason)
-        now_ist = datetime.now(ist).replace(tzinfo=None)
+    def restore_sessions(self, db):
+        """Rebuild slot tracking and session locks from durable orders and positions."""
+        key = get_current_binance_session_date()
+        self.active_session_key = key
+        self.tp_rank_1_slot = self.tp_rank_2_slot = None
+        for slot, role in ((1, "1st Trader"), (2, "2nd Trader")):
+            prefix = f"slot{slot}"
+            for field in ("session_id", "strike", "option_mark", "traded_session_key"):
+                setattr(self, f"{prefix}_{field}", None)
+            setattr(self, f"{prefix}_completed", False)
+            sessions = db.query(HedgeSession).join(
+                HedgeTradeOrder, HedgeTradeOrder.session_id == HedgeSession.id
+            ).filter(HedgeTradeOrder.trader_leg == role).order_by(HedgeSession.id.desc()).all()
+            for sess in sessions:
+                if sess.expiry_session == key:
+                    setattr(self, f"{prefix}_traded_session_key", key)
+                    if sess.status not in ("Open", "OPEN"):
+                        setattr(self, f"{prefix}_completed", True)
+                if sess.status not in ("Open", "OPEN"):
+                    continue
+                positions = db.query(HedgeOpenPosition).filter_by(session_id=sess.id).all()
+                fut = next((p for p in positions if "FUTURES" in p.symbol), None)
+                opt = next((p for p in positions if "FUTURES" not in p.symbol), None)
+                if opt:
+                    setattr(self, f"{prefix}_session_id", sess.id)
+                    setattr(self, f"{prefix}_strike", float(opt.symbol.split("-")[2]))
+                    setattr(self, f"{prefix}_option_mark", opt.entry_price)
+                    setattr(self, f"{prefix}_fut_entry", sess.bull_entry or sess.bear_entry)
+                    setattr(self, f"{prefix}_direction", "Bullish" if sess.bull_entry else "Bearish")
+                    break
+        events = db.query(HedgeSessionEvent).join(HedgeSession,
+            HedgeSessionEvent.session_id == HedgeSession.id).filter(
+            HedgeSession.expiry_session == key, HedgeSessionEvent.event_type == "FUTURES_TP"
+        ).order_by(HedgeSessionEvent.id).all()
+        for rank, event in enumerate(events[:2], 1):
+            setattr(self, f"tp_rank_{rank}_slot", json.loads(event.payload_json)["role"])
 
+    def credit_realized(self, db, sess, amount, reason):
+        """Credit only newly realized leg PnL, retaining previous settlements."""
+        cash = db.query(HedgeConfig).filter_by(key="PAPER_WALLET_USDT").first()
+        if cash is None:
+            cash = HedgeConfig(key="PAPER_WALLET_USDT", value="100000")
+            db.add(cash)
+        amount = round(amount, 2)
+        balance = round(float(cash.value) + amount, 2)
+        cash.value = str(balance)
+        sess.realized_pnl = round((sess.realized_pnl or 0) + amount, 2)
+        db.add(HedgePaperLedgerEntry(session_id=sess.id, entry_type=reason,
+            amount=amount, balance_after=balance, detail=reason,
+            created_at=datetime.now(ist).replace(tzinfo=None)))
+
+    async def manage_slot(self, db, sess, role):
+        """Execute the documented first/second TP phases using durable orders/events."""
+        positions = db.query(HedgeOpenPosition).filter_by(session_id=sess.id).all()
+        fut = next((p for p in positions if "FUTURES" in p.symbol), None)
+        opt = next((p for p in positions if "FUTURES" not in p.symbol), None)
+        if not opt:
+            raise ValueError(f"Missing held option for session {sess.id}")
+        event = db.query(HedgeSessionEvent).filter_by(session_id=sess.id, event_type="FUTURES_TP").first()
+        bullish = bool(sess.bull_entry)
+        entry = sess.bull_entry or sess.bear_entry
+        target = entry + opt.entry_price if bullish else entry - opt.entry_price
+        mark = self.last_futures_mark
+        hit = mark >= target if bullish else mark <= target
+        if fut and not event and hit:
+            prior = db.query(HedgeSessionEvent).join(HedgeSession,
+                HedgeSessionEvent.session_id == HedgeSession.id).filter(
+                HedgeSession.expiry_session == sess.expiry_session,
+                HedgeSessionEvent.event_type == "FUTURES_TP").count()
+            rank = prior + 1
+            now = datetime.now(ist).replace(tzinfo=None)
+            pnl = (mark - fut.entry_price) * fut.qty * (1 if bullish else -1)
+            db.add(HedgeTradeOrder(session_id=sess.id, symbol=fut.symbol,
+                side="SELL" if bullish else "BUY", trader_leg=role, order_type="TAKE_PROFIT",
+                qty=fut.qty, price=mark, status="FILLED", created_at=now))
+            if bullish: sess.bull_exit = mark
+            else: sess.bear_exit = mark
+            db.delete(fut)
+            self.credit_realized(db, sess, pnl, "FUTURES_TP")
+            db.add(HedgeSessionEvent(session_id=sess.id, event_type="FUTURES_TP",
+                message=f"{role} futures TP rank {rank}",
+                payload_json=json.dumps(dict(role=role, rank=rank)), created_at=now))
+            strike = float(opt.symbol.split("-")[2])
+            db.add(HedgeTradeOrder(session_id=sess.id,
+                symbol=opt.symbol if rank == 1 else "BTC-USDT-FUTURES",
+                side="SELL" if rank == 1 or not bullish else "BUY", trader_leg=role,
+                order_type="OPTION_TARGET" if rank == 1 else "REENTRY_LIMIT", qty=opt.qty,
+                price=opt.entry_price * 2 if rank == 1 else (strike - opt.entry_price if bullish else strike + opt.entry_price),
+                status="PENDING", created_at=now))
+            db.commit()
+            self.restore_sessions(db)
+            return
+        pending = db.query(HedgeTradeOrder).filter_by(session_id=sess.id, status="PENDING").all()
+        for order in pending:
+            if order.order_type == "OPTION_TARGET":
+                if option_mark(self.option_quotes, opt.symbol) >= order.price:
+                    # Record a single filled target, not a duplicate market close.
+                    await self.execute_squareoff(db, "Option Target Hit", [sess.id])
+            elif order.order_type == "REENTRY_LIMIT" and fut is None:
+                hit = mark <= order.price if order.side == "BUY" else mark >= order.price
+                if hit:
+                    order.status = "FILLED"
+                    order.price = mark  # paper execution uses the observed mark
+                    db.add(HedgeOpenPosition(session_id=sess.id, symbol=order.symbol,
+                        side="LONG" if order.side == "BUY" else "SHORT", entry_price=mark,
+                        qty=order.qty, leverage=opt.leverage))
+                    db.commit()
+
+    async def execute_squareoff(self, db, reason="Scheduled Squareoff", session_ids=None):
+        query = db.query(HedgeSession).filter(HedgeSession.status.in_(["Open", "OPEN"]))
+        if session_ids is not None:
+            query = query.filter(HedgeSession.id.in_(session_ids))
+        sessions = query.all()
+        if not sessions:
+            self.restore_sessions(db)
+            self.state = "IN_TRADE" if self.slot1_session_id or self.slot2_session_id else "COMPLETED"
+            return
         futures_mark = await get_btc_futures_mark_price()
-        opts_list = await get_btc_options_mark_prices()
-        opts_dict = {item.get("symbol", ""): float(item.get("markPrice", 0.0)) for item in opts_list if isinstance(item, dict)}
-
-        # Query all active or square-off pending sessions
-        open_sessions = db.query(HedgeSession).filter(HedgeSession.status.in_(["Open", "Manual Square-off"])).all()
-
-        for sess in open_sessions:
-            positions = db.query(HedgeOpenPosition).filter(HedgeOpenPosition.session_id == sess.id).all()
-            session_pnl = 0.0
-
-            for pos in positions:
-                qty = pos.qty
-                if "FUTURES" in pos.symbol:
-                    if pos.side == "LONG":
-                        pnl = (futures_mark - pos.entry_price) * qty
-                        sess.bull_exit = futures_mark
-                    else:
-                        pnl = (pos.entry_price - futures_mark) * qty
-                        sess.bear_exit = futures_mark
-                    
-                    close_order = HedgeTradeOrder(
-                        session_id=sess.id,
-                        symbol=pos.symbol,
-                        side="SELL" if pos.side == "LONG" else "BUY",
-                        trader_leg=self.active_role,
-                        order_type="MARKET",
-                        qty=qty,
-                        price=futures_mark,
-                        status="FILLED",
-                        created_at=now_ist
-                    )
-                    db.add(close_order)
+        quotes = await get_btc_options_mark_prices()
+        plans = []
+        for sess in sessions:
+            positions = db.query(HedgeOpenPosition).filter_by(session_id=sess.id).all()
+            if not positions:
+                raise ValueError(f"Open hedge session {sess.id} has no positions")
+            order = db.query(HedgeTradeOrder).filter_by(session_id=sess.id).order_by(HedgeTradeOrder.id).first()
+            if not order:
+                raise ValueError(f"Missing entry order for hedge session {sess.id}")
+            exits = [(pos, futures_mark if "FUTURES" in pos.symbol else option_mark(quotes, pos.symbol)) for pos in positions]
+            plans.append((sess, order.trader_leg, exits))
+        now = datetime.now(ist).replace(tzinfo=None)
+        cash = db.query(HedgeConfig).filter_by(key="PAPER_WALLET_USDT").first()
+        if cash is None:
+            cash = HedgeConfig(key="PAPER_WALLET_USDT", value="100000")
+            db.add(cash)
+        balance = float(cash.value)
+        for sess, role, exits in plans:
+            pnl = 0.0
+            details = []
+            for pos, exit_price in exits:
+                long = pos.side.upper() in ("LONG", "BUY")
+                leg_pnl = (exit_price - pos.entry_price) * pos.qty * (1 if long else -1)
+                pnl += leg_pnl
+                target_order = db.query(HedgeTradeOrder).filter_by(session_id=sess.id,
+                    symbol=pos.symbol, order_type="OPTION_TARGET", status="PENDING").first() if reason == "Option Target Hit" else None
+                if target_order:
+                    target_order.status = "FILLED"
+                    target_order.price = exit_price
                 else:
-                    # Option close at live market price or intrinsic valuation fallback
-                    live_opt_price = opts_dict.get(pos.symbol, 0.0)
-                    if live_opt_price <= 0.0:
-                        try:
-                            parts = pos.symbol.split("-")
-                            strike_val = float(parts[2])
-                            is_put = parts[3] == "P"
-                            if is_put:
-                                live_opt_price = max(0.0, strike_val - futures_mark)
-                            else:
-                                live_opt_price = max(0.0, futures_mark - strike_val)
-                        except Exception:
-                            live_opt_price = pos.entry_price
-
-                    pnl = (live_opt_price - pos.entry_price) * qty
-                    close_order = HedgeTradeOrder(
-                        session_id=sess.id,
-                        symbol=pos.symbol,
-                        side="SELL",
-                        trader_leg=self.active_role,
-                        order_type="MARKET",
-                        qty=qty,
-                        price=round(live_opt_price, 2),
-                        status="FILLED",
-                        created_at=now_ist
-                    )
-                    db.add(close_order)
-
-                session_pnl += pnl
+                    db.add(HedgeTradeOrder(session_id=sess.id, symbol=pos.symbol,
+                        side="SELL" if long else "BUY", trader_leg=role, order_type="MARKET",
+                        qty=pos.qty, price=exit_price, status="FILLED", created_at=now))
+                if "FUTURES" in pos.symbol:
+                    if long: sess.bull_exit = exit_price
+                    else: sess.bear_exit = exit_price
+                else:
+                    details.append(dict(symbol=pos.symbol, entry_price=pos.entry_price,
+                        exit_price=exit_price, qty=pos.qty, pnl=leg_pnl))
                 db.delete(pos)
-
-            sess.status = "Manual Square-off" if ("Emergency" in reason or "Manual" in reason) else "Completed"
+            for pending in db.query(HedgeTradeOrder).filter_by(session_id=sess.id, status="PENDING").all():
+                if pending.status == "PENDING":
+                    pending.status = "CANCELLED"
+                    pending.cancel_reason = reason
+            sess.status = "Completed"
             sess.exit_reason = reason
-            sess.realized_pnl = round(session_pnl, 2)
-
-            # Update Paper Wallet Cash Balance for this session
-            cash_item = db.query(HedgeConfig).filter(HedgeConfig.key == "PAPER_WALLET_USDT").first()
-            old_cash = float(cash_item.value) if cash_item else 100000.0
-            new_cash = old_cash + session_pnl
-            if cash_item:
-                cash_item.value = str(new_cash)
-            else:
-                db.add(HedgeConfig(key="PAPER_WALLET_USDT", value=str(new_cash)))
-
-            ledger = HedgePaperLedgerEntry(
-                session_id=sess.id,
-                entry_type="SESSION_SQUAREOFF",
-                amount=round(session_pnl, 2),
-                balance_after=round(new_cash, 2),
-                detail=f"Session #{sess.id} Square-Off [{reason}] Realized PnL: ${session_pnl:+.2f}",
-                created_at=now_ist
-            )
-            db.add(ledger)
-
+            realized_now = round(pnl, 2)
+            sess.realized_pnl = round((sess.realized_pnl or 0) + realized_now, 2)
+            sess.updated_at = now
+            balance += realized_now
+            db.add(HedgePaperLedgerEntry(session_id=sess.id, entry_type="SESSION_SQUAREOFF",
+                amount=realized_now, balance_after=round(balance, 2),
+                detail=json.dumps(dict(message=reason, futures_exit_price=futures_mark,
+                    options_exit_details=details)), created_at=now))
+        cash.value = str(round(balance, 2))
         db.commit()
+        self.restore_sessions(db)
+        self.state = "IN_TRADE" if self.slot1_session_id or self.slot2_session_id else "COMPLETED"
 
-        if self.slot1_session_id:
-            self.slot1_completed = True
-        if self.slot2_session_id:
-            self.slot2_completed = True
-
-        self.slot1_session_id = None
-        self.slot2_session_id = None
-        self.slot1_strike = None
-        self.slot2_strike = None
-        self.tp_rank_1_slot = None
-        self.tp_rank_2_slot = None
-        self.state = "COMPLETED"
+    async def tick(self, db):
+        commands = db.query(HedgeRuntimeCommand).filter_by(command="SQUAREOFF", status="QUEUED").all()
+        manual = self.state == "SQUAREOFF" or bool(commands)
+        self.restore_sessions(db)
+        cfg = self.load_config(db)
+        if manual:
+            await self.execute_squareoff(db, "Manual Emergency Squareoff")
+            for command in commands:
+                command.status = "COMPLETED"
+            db.commit()
+            return
+        enabled = cfg.get("BOT_ENABLED", "1") == "1" and cfg.get("ENGINE_ENABLED", "1") == "1"
+        paused = cfg.get("GLOBAL_PAUSE", "0") == "1"
+        weekend = cfg.get("SKIP_WEEKENDS", "1") == "1" and is_weekend_session()
+        active = self.slot1_session_id or self.slot2_session_id
+        if not active and (not enabled or paused or weekend):
+            self.state = "DISABLED" if not enabled else ("PAUSED" if paused else "SKIP_WEEKEND")
+            return
+        self.last_spot_price = await get_btc_spot_price()
+        self.last_futures_mark = await get_btc_futures_mark_price()
+        try:
+            self.option_quotes = await get_btc_options_mark_prices()
+        except ValueError:
+            self.option_quotes = []
+            logger.warning("Options unavailable; retaining positions pending valid marks")
+        now = datetime.now(ist)
+        window_open = False
+        for slot, role in ((1, "1st Trader"), (2, "2nd Trader")):
+            config = self.get_role_strategy_config(db, role)
+            if not config:
+                continue
+            # Preview failures must not prevent another active slot from being managed.
+            for direction, label in (("Bullish", "put"), ("Bearish", "call")):
+                try:
+                    strike, mark, _, _ = self.select_itm_option(self.option_quotes, self.last_spot_price, direction, config.max_premium, config.max_time_value, now)
+                    reason = ""
+                except ValueError:
+                    strike, mark = 0.0, 0.0
+                    try:
+                        self.select_itm_option(self.option_quotes, self.last_spot_price, direction, float("inf"), float("inf"), now)
+                        reason = f"Quotes available; no contract passes premium <= {config.max_premium:g} and TV <= {config.max_time_value:g}"
+                    except ValueError:
+                        reason = "No eligible ITM quotes with expiry remaining between 0 and 24 hours"
+                setattr(self, f"preview_slot{slot}_{label}_reason", reason)
+                setattr(self, f"preview_slot{slot}_{label}_strike", strike)
+                setattr(self, f"preview_slot{slot}_{label}_mark", mark)
+            required_direction = self.entry_direction(db, role, config.direction)
+            setattr(self, f"preview_slot{slot}_required_direction", required_direction)
+            try:
+                selected = self.select_itm_option(self.option_quotes, self.last_spot_price,
+                    required_direction, config.max_premium, config.max_time_value, now)
+            except ValueError:
+                selected = None
+            setattr(self, f"preview_slot{slot}_selected", selected)
+            # Use the held session's entry date to handle deadlines after the expiry boundary.
+            sid = getattr(self, f"slot{slot}_session_id")
+            if sid:
+                sess = db.get(HedgeSession, sid)
+                entry = sess.created_at.replace(tzinfo=ist)
+                deadline = entry.replace(hour=config.force_close_h, minute=config.force_close_m, second=0, microsecond=0)
+                if deadline <= entry:
+                    deadline += timedelta(days=1)
+                try:
+                    if now >= deadline:
+                        await self.execute_squareoff(db, "Scheduled Squareoff", [sid])
+                    else:
+                        await self.manage_slot(db, sess, role)
+                except ValueError as exc:
+                    db.rollback()
+                    logger.warning("%s management deferred: %s", role, exc)
+                continue
+            start = config.trade_start_h * 60 + config.trade_start_m
+            end = config.trade_end_h * 60 + config.trade_end_m
+            minute = now.hour * 60 + now.minute
+            in_window = start <= minute <= end if start <= end else minute >= start or minute <= end
+            window_open |= in_window
+            if not (enabled and not paused and not weekend and config.enabled and in_window):
+                continue
+            try:
+                await self.execute_slot_entry(db, role, config, self.last_futures_mark, self.last_spot_price, quotes=self.option_quotes, snapshot_time=now)
+            except ValueError as exc:
+                logger.warning("Slot %s entry deferred: %s", slot, exc)
+        active = self.slot1_session_id or self.slot2_session_id
+        self.state = "IN_TRADE" if active else ("DISABLED" if not enabled else "PAUSED" if paused else "ENTRY_WINDOW" if window_open else "IDLE")
+        if not active:
+            self.flush_pending_config_on_session_close(db)
 
     async def run_loop(self):
         self.is_running = True
-        logger.info("Hedge Engine async loop started.")
         while self.is_running:
+            db = SessionLocal()
             try:
-                db = SessionLocal()
-                cfg = self.load_config(db)
-                bot_enabled = cfg.get("BOT_ENABLED", "1") == "1"
-
-                if not bot_enabled:
-                    self.state = "DISABLED"
-                    db.close()
-                    await asyncio.sleep(2.0)
-                    continue
-
-                skip_weekends = cfg.get("SKIP_WEEKENDS", "1") == "1"
-                if skip_weekends and is_weekend_session():
-                    self.state = "SKIP_WEEKEND"
-                    db.close()
-                    await asyncio.sleep(2.0)
-                    continue
-
-                spot_price = await get_btc_spot_price()
-                futures_mark = await get_btc_futures_mark_price()
-                self.last_spot_price = spot_price
-                self.last_futures_mark = futures_mark
-
-                now_time_full = datetime.now(ist).strftime("%H:%M:%S")
-                now_time_str = now_time_full[:5]
-                now_rel = get_session_relative_minutes(now_time_str)
-
-                slot1_cfg = self.get_role_strategy_config(db, "1st Trader")
-                slot2_cfg = self.get_role_strategy_config(db, "2nd Trader")
-
-                # Live options mark price feed polling for active telemetry (both Bullish PUT & Bearish CALL)
-                if slot1_cfg:
-                    put_strk, put_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bullish")
-                    call_strk, call_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bearish")
-                    self.preview_slot1_put_strike = put_strk
-                    self.preview_slot1_put_mark = put_mark
-                    self.preview_slot1_call_strike = call_strk
-                    self.preview_slot1_call_mark = call_mark
-
-                if slot2_cfg:
-                    put_strk, put_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bullish")
-                    call_strk, call_mark, _, _ = await self.find_nearest_itm_option(futures_mark, "Bearish")
-                    self.preview_slot2_put_strike = put_strk
-                    self.preview_slot2_put_mark = put_mark
-                    self.preview_slot2_call_strike = call_strk
-                    self.preview_slot2_call_mark = call_mark
-
-                w_start_h = slot1_cfg.trade_start_h if slot1_cfg else 6
-                w_start_m = slot1_cfg.trade_start_m if slot1_cfg else 0
-                w_end_h = slot1_cfg.trade_end_h if slot1_cfg else 7
-                w_end_m = slot1_cfg.trade_end_m if slot1_cfg else 30
-                sq_h = slot1_cfg.force_close_h if slot1_cfg else 11
-                sq_m = slot1_cfg.force_close_m if slot1_cfg else 30
-
-                w_start_rel = get_session_relative_minutes(f"{w_start_h:02d}:{w_start_m:02d}")
-                w_end_rel = get_session_relative_minutes(f"{w_end_h:02d}:{w_end_m:02d}")
-                sq_end_rel = get_session_relative_minutes(f"{sq_h:02d}:{sq_m:02d}")
-
-                current_session_key = get_current_binance_session_date()
-                if self.active_session_key != current_session_key:
-                    # New Binance Expiry Session started! (Rollover past 13:30 PM IST)
-                    logger.info("Binance Expiry Session Rollover detected -> New Session Key: %s", current_session_key)
-                    self.active_session_key = current_session_key
-                    self.slot1_completed = False
-                    self.slot2_completed = False
-                    self.slot1_traded_session_key = None
-                    self.slot2_traded_session_key = None
-                    if self.state in ["COMPLETED", "SQUAREOFF"]:
-                        self.state = "IDLE"
-
-                # 1. State Transition: Entry Window Active
-                if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE"]:
-                    self.state = "ENTRY_WINDOW"
-                    logger.info("Entering Hedge Entry Window (%02d:%02d - %02d:%02d) for Session [%s]", w_start_h, w_start_m, w_end_h, w_end_m, current_session_key)
-
-                # 2. Phase 1: Slot 1 & Slot 2 Entry Evaluation
-                if self.state == "ENTRY_WINDOW":
-                    # Evaluate Slot 1
-                    if not self.slot1_session_id and slot1_cfg and slot1_cfg.enabled:
-                        await self.execute_slot_entry(db, "1st Trader", slot1_cfg, futures_mark, spot_price)
-
-                    # Evaluate Slot 2 with Rule C (Clash Check)
-                    if not self.slot2_session_id and slot2_cfg and slot2_cfg.enabled:
-                        should_evaluate_slot2 = True
-                        if self.slot1_session_id and self.slot1_strike is not None:
-                            # Rule C Clash Check: Slot 2 strike must be >= Slot 1 strike
-                            temp_strike, _, _, _ = await self.find_nearest_itm_option(futures_mark, slot2_cfg.direction)
-                            if temp_strike < self.slot1_strike:
-                                logger.info("Slot 2 Clash Check Failed: Strike $%.0f < Slot 1 Strike $%.0f", temp_strike, self.slot1_strike)
-                                should_evaluate_slot2 = False
-
-                        if should_evaluate_slot2:
-                            await self.execute_slot_entry(db, "2nd Trader", slot2_cfg, futures_mark, spot_price)
-
-                    if self.slot1_session_id or self.slot2_session_id:
-                        self.state = "IN_TRADE"
-
-                # 3. Phase 3: Universal Squareoff Check
-                if self.state in ["SQUAREOFF"] or (now_rel >= sq_end_rel and self.state in ["ENTRY_WINDOW", "IN_TRADE"]):
-                    await self.execute_squareoff(db, "11:30 AM Universal Squareoff" if self.state != "SQUAREOFF" else "Manual Emergency Squareoff")
-
-                # 4. Flush Pending Configs on Session Complete
-                if self.state == "COMPLETED":
-                    self.flush_pending_config_on_session_close(db)
-
+                await self.tick(db)
+            except Exception:
+                db.rollback()
+                logger.exception("Error in Hedge Engine loop")
+            finally:
                 db.close()
-            except Exception as e:
-                logger.error("Error in Hedge Engine loop: %s", str(e), exc_info=True)
-
             await asyncio.sleep(2.0)
 
     def start(self):

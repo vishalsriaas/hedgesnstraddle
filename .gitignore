@@ -1,0 +1,39 @@
+# Python & Virtualenv
+.mcp-venv/
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+ENV/
+
+# Database & SQLite
+*.db
+hedgesnstraddle.db
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local environments, secrets, databases and historical backups
+.venv/
+.local/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite*-wal
+*.sqlite*-shm
+*.bak
+backups/
+backup_*/
+*_backup_*
+COPY_MANIFEST.json

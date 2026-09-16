@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from datetime import datetime
 import pytz
 ist = pytz.timezone('Asia/Kolkata')
@@ -11,6 +12,8 @@ from app.models.schema import (
     StraddleTradeOrder, StraddleFill, StraddleWalletLedger
 )
 from app.core.binance_client import get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_tickers, get_btc_options_mark_prices
+
+from app.core.market_data import option_mark, unexpired
 
 logger = logging.getLogger("hedgesnstraddle.straddle_engine")
 
@@ -37,21 +40,21 @@ class StraddleEngine:
         self.state = "IDLE"
         
         # Live state properties
-        self.last_spot_price: float = 64300.0
-        self.last_futures_mark: float = 64300.0
+        self.last_spot_price: float = 0.0
+        self.last_futures_mark: float = 0.0
         self.nearest_expiry: str = "N/A"
-        self.current_strike: float = 64000.0
-        self.current_call_mark: float = 180.50
-        self.current_put_mark: float = 195.20
-        self.combined_premium: float = 375.70
+        self.current_strike: float = 0.0
+        self.current_call_mark: float = 0.0
+        self.current_put_mark: float = 0.0
+        self.combined_premium: float = 0.0
         
         # Active session position mark tracking (locked to bought strikes)
         self.active_call_mark: float = 0.0
         self.active_put_mark: float = 0.0
         
         # Calculated OCO limit levels
-        self.short_limit_price: float = 64375.70
-        self.long_limit_price: float = 63624.30
+        self.short_limit_price: float = 0.0
+        self.long_limit_price: float = 0.0
         self.is_short_limit_active: bool = False
         self.is_long_limit_active: bool = False
         self.target_tp_price: float = 0.0
@@ -113,103 +116,71 @@ class StraddleEngine:
         Returns: (best_strike, call_mark_price, put_mark_price, expiry_date)
         """
         tickers = await get_btc_options_mark_prices()
+        symbols = {q.get("symbol", "") for q in tickers}
+        pairs = []
+        for symbol in symbols:
+            if not symbol.endswith("-C") or not unexpired(symbol):
+                continue
+            put_symbol = symbol[:-1] + "P"
+            if put_symbol not in symbols:
+                continue
+            try:
+                call = option_mark(tickers, symbol)
+                put = option_mark(tickers, put_symbol)
+                parts = symbol.split("-")
+                if call > 0 and put > 0:
+                    pairs.append((parts[1], float(parts[2]), call, put))
+            except ValueError:
+                continue
+        if not pairs:
+            raise ValueError("DATA_GAP: No complete unexpired call/put pair")
+        expiry, strike, call, put = min(pairs, key=lambda p: (p[0], abs(p[1] - futures_mark), p[1]))
+        return strike, call, put, expiry
 
-        # Fallback: round futures mark to nearest 500 BTC step
-        base_strike = round(futures_mark / 500.0) * 500.0
-
-        if not tickers:
-            return base_strike, 180.50, 195.20, "N/A"
-
-        parsed_tickers = []
-        for t in tickers:
-            sym = t.get("symbol", "")
-            parts = sym.split("-")
-            if len(parts) >= 4:
-                try:
-                    expiry_date = parts[1]
-                    strike = float(parts[2])
-                    side = parts[3]          # "C" = Call, "P" = Put
-                    mark_price = float(t.get("markPrice") or 0.0)
-                    parsed_tickers.append({
-                        "symbol": sym,
-                        "expiry": expiry_date,
-                        "strike": strike,
-                        "side": side,
-                        "mark": mark_price
-                    })
-                except ValueError:
-                    continue
-
-        if not parsed_tickers:
-            return base_strike, 180.50, 195.20, "N/A"
-
-        # Filter strictly for NEAREST EXPIRY DATE
-        available_expiries = sorted(list(set(item["expiry"] for item in parsed_tickers)))
-        nearest = available_expiries[0]
-        nearest_tickers = [item for item in parsed_tickers if item["expiry"] == nearest]
-
-        # Find closest strike to FUTURES MARK PRICE
-        #   ATM  → strike ≈ futures_mark
-        #   Call ITM → strike < futures_mark  |  Call OTM → strike > futures_mark
-        #   Put  ITM → strike > futures_mark  |  Put  OTM → strike < futures_mark
-        strikes = sorted(
-            list(set(item["strike"] for item in nearest_tickers)),
-            key=lambda k: abs(k - futures_mark)   # ← reference is futures mark
-        )
-        best_strike = strikes[0] if strikes else base_strike
-
-        # Retrieve Call and Put marks at this strike
-        best_call = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "C"), None)
-        best_put  = next((x for x in nearest_tickers if x["strike"] == best_strike and x["side"] == "P"), None)
-
-        call_mark = best_call["mark"] if best_call else 180.50
-        put_mark  = best_put["mark"]  if best_put  else 195.20
-
-        return best_strike, call_mark, put_mark, nearest
-
-    async def get_specific_strike_marks(self, call_strike: float, put_strike: float, expiry: Optional[str] = None):
-        """
-        Retrieves live mark prices specifically for open session call & put strikes.
-        """
+    async def get_specific_strike_marks(self, call_strike, put_strike, expiry=None):
         tickers = await get_btc_options_mark_prices()
-        if not tickers:
-            return 180.50, 195.20
+        return (option_mark(tickers, f"BTC-{expiry}-{int(call_strike)}-C"),
+                option_mark(tickers, f"BTC-{expiry}-{int(put_strike)}-P"))
 
-        parsed_tickers = []
-        for t in tickers:
-            sym = t.get("symbol", "")
-            parts = sym.split("-")
-            if len(parts) >= 4:
-                try:
-                    expiry_date = parts[1]
-                    strike = float(parts[2])
-                    side = parts[3]
-                    mark_price = float(t.get("markPrice") or 0.0)
-                    parsed_tickers.append({
-                        "expiry": expiry_date,
-                        "strike": strike,
-                        "side": side,
-                        "mark": mark_price
-                    })
-                except ValueError:
-                    continue
+    def session_qty(self, db, session_id):
+        order = db.query(StraddleTradeOrder).filter(
+            StraddleTradeOrder.session_id == session_id,
+            StraddleTradeOrder.asset_type == "OPTION",
+            StraddleTradeOrder.side == "BUY",
+            StraddleTradeOrder.status == "FILLED").first()
+        if not order or not math.isfinite(order.qty) or order.qty <= 0:
+            raise ValueError("Invalid or missing original straddle fill quantity")
+        return order.qty
 
-        if not parsed_tickers:
-            return 180.50, 195.20
-
-        target_tickers = parsed_tickers
-        if expiry and expiry != "N/A":
-            matching_expiry = [x for x in parsed_tickers if x["expiry"] == expiry]
-            if matching_expiry:
-                target_tickers = matching_expiry
-
-        call_match = next((x for x in target_tickers if x["strike"] == call_strike and x["side"] == "C"), None)
-        put_match  = next((x for x in target_tickers if x["strike"] == put_strike and x["side"] == "P"), None)
-
-        call_mark = call_match["mark"] if call_match else 180.50
-        put_mark  = put_match["mark"]  if put_match  else 195.20
-
-        return call_mark, put_mark
+    def restore_session(self, db):
+        manual = self.state == "SQUAREOFF"
+        sess = db.query(StraddleSession).filter(
+            StraddleSession.status.in_(["Open", "OPEN", "MANUAL_SQUAREOFF"])
+        ).order_by(StraddleSession.id).first()
+        self.active_session_id = sess.id if sess else None
+        if not sess:
+            if not manual:
+                self.state = "IDLE"
+            return
+        orders = db.query(StraddleTradeOrder).filter(StraddleTradeOrder.session_id == sess.id).all()
+        self.is_short_limit_active = self.is_long_limit_active = False
+        for order in orders:
+            if order.leg_label == "SHORT_LIMIT":
+                self.short_limit_price = order.price
+                self.is_short_limit_active = order.status == "PENDING"
+            elif order.leg_label == "LONG_LIMIT":
+                self.long_limit_price = order.price
+                self.is_long_limit_active = order.status == "PENDING"
+        self.combined_premium = sess.net_straddle_ask
+        self.target_tp_price = sess.futures_tp_price or 0.0
+        if manual or sess.status == "MANUAL_SQUAREOFF":
+            self.state = "SQUAREOFF"
+        elif sess.futures_entry_price and sess.futures_entry_price > 0:
+            self.state = "IN_TRADE"
+        elif self.is_short_limit_active or self.is_long_limit_active:
+            self.state = "LIMITS_PLACED"
+        else:
+            self.state = "RECOVERY"
 
     def get_live_monitoring_snapshot(self, db: Session) -> Dict[str, Any]:
         """Returns dynamic workflow status and limit order computations for the frontend."""
@@ -283,12 +254,13 @@ class StraddleEngine:
         self.is_running = True
         logger.info("Straddle Engine async loop started.")
         while self.is_running:
+            db = SessionLocal()
             try:
-                db = SessionLocal()
                 cfg = self.load_config(db)
                 bot_enabled = cfg.get("BOT_ENABLED", "1") == "1"
 
-                if not bot_enabled:
+                self.restore_session(db)
+                if not bot_enabled and not self.active_session_id and self.state != "SQUAREOFF":
                     self.state = "DISABLED"
                     db.close()
                     await asyncio.sleep(2.0)
@@ -303,17 +275,21 @@ class StraddleEngine:
                 futures_mark = await get_btc_futures_mark_price()
                 self.last_futures_mark = futures_mark
 
-                strike, call_mark, put_mark, expiry = await self.find_same_strike_pair(futures_mark)
+                if self.active_session_id:
+                    held = db.get(StraddleSession, self.active_session_id)
+                    strike, expiry = held.call_strike, held.expiry_sym
+                    call_mark, put_mark = await self.get_specific_strike_marks(held.call_strike, held.put_strike, expiry)
+                else:
+                    strike, call_mark, put_mark, expiry = await self.find_same_strike_pair(futures_mark)
                 self.current_strike = strike
                 self.current_call_mark = call_mark
                 self.current_put_mark = put_mark
                 self.nearest_expiry = expiry
-                
-                # Calculations
-                oco_limit_multiplier = float(cfg.get("OCO_LIMIT_MULTIPLIER", "1.0"))
-                self.combined_premium = call_mark + put_mark
-                self.short_limit_price = strike + (self.combined_premium * oco_limit_multiplier)
-                self.long_limit_price = strike - (self.combined_premium * oco_limit_multiplier)
+                if not self.active_session_id:
+                    oco_limit_multiplier = float(cfg.get("OCO_LIMIT_MULTIPLIER", "1.0"))
+                    self.combined_premium = call_mark + put_mark
+                    self.short_limit_price = strike + self.combined_premium * oco_limit_multiplier
+                    self.long_limit_price = strike - self.combined_premium * oco_limit_multiplier
 
                 now_time_str = datetime.now(ist).strftime("%H:%M")
                 now_rel = get_session_relative_minutes(now_time_str)
@@ -339,35 +315,16 @@ class StraddleEngine:
                     except Exception:
                         pass
 
-                # Restore active session from DB if not loaded in memory (e.g. after server restart)
-                if not self.active_session_id:
-                    open_sess = db.query(StraddleSession).filter(StraddleSession.status == "Open").order_by(StraddleSession.id.desc()).first()
-                    if open_sess:
-                        self.active_session_id = open_sess.id
-
-                # Fetch live mark prices specifically for open session strikes if active
-                if self.active_session_id:
-                    active_sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
-                    if active_sess and active_sess.status == "Open":
-                        ac_mark, ap_mark = await self.get_specific_strike_marks(
-                            active_sess.call_strike, active_sess.put_strike, active_sess.expiry_sym
-                        )
-                        self.active_call_mark = ac_mark
-                        self.active_put_mark = ap_mark
-                    else:
-                        self.active_call_mark = 0.0
-                        self.active_put_mark = 0.0
-                else:
-                    self.active_call_mark = 0.0
-                    self.active_put_mark = 0.0
+                self.active_call_mark = call_mark if self.active_session_id else 0.0
+                self.active_put_mark = put_mark if self.active_session_id else 0.0
 
                 # Handle state transitions and simulated trade punching
-                if w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE", "SQUAREOFF", "COMPLETED"]:
+                if bot_enabled and w_start_rel <= now_rel <= w_end_rel and self.state in ["IDLE", "COMPLETED"]:
                     self.state = "ENTRY_WINDOW"
                     logger.info("Entering Straddle Entry Window (%s - %s)", window_start, window_end)
 
                 # Punch straddle entry if all conditions met
-                if self.state == "ENTRY_WINDOW" and not self.active_session_id:
+                if bot_enabled and w_start_rel <= now_rel <= w_end_rel and self.state == "ENTRY_WINDOW" and not self.active_session_id:
                     max_premium_limit = float(cfg.get("MAX_TOTAL_MARK", "400.0"))
                     max_gap_limit = float(cfg.get("MAX_PREMIUM_GAP", "150.0"))
 
@@ -380,6 +337,8 @@ class StraddleEngine:
 
                     if premium_ok and gap_ok and not is_weekend_session and not already_traded:
                         qty = float(cfg.get("TRADE_QTY", "10"))
+                        if not math.isfinite(qty) or qty <= 0:
+                            raise ValueError("TRADE_QTY must be positive")
 
                         now_ist = datetime.now(ist).replace(tzinfo=None)
 
@@ -398,8 +357,7 @@ class StraddleEngine:
                             created_at=now_ist
                         )
                         db.add(new_sess)
-                        db.commit()
-                        db.refresh(new_sess)
+                        db.flush()
                         self.active_session_id = new_sess.id
 
                         # Save last traded expiry to prevent duplicate session triggers
@@ -408,7 +366,7 @@ class StraddleEngine:
                             last_traded_cfg.value = expiry
                         else:
                             db.add(StraddleConfig(key="LAST_TRADED_EXPIRY", value=expiry))
-                        db.commit()
+                        db.flush()
 
                         # 2. Add simulated BUY fill records for Call and Put options at mark price
                         call_ord = StraddleTradeOrder(
@@ -465,7 +423,7 @@ class StraddleEngine:
                         )
                         db.add(short_limit_ord)
                         db.add(long_limit_ord)
-                        db.commit()
+                        db.flush()
 
                         # 4. Deduct option entry premium cost from virtual margin account & record wallet ledger
                         total_cost = self.combined_premium * qty
@@ -474,6 +432,8 @@ class StraddleEngine:
                         new_balance = old_balance - total_cost
                         if wallet_item:
                             wallet_item.value = str(new_balance)
+                        else:
+                            db.add(StraddleConfig(key="PAPER_WALLET_USDT", value=str(new_balance)))
 
                         ledger_entry = StraddleWalletLedger(
                             session_id=new_sess.id,
@@ -495,6 +455,14 @@ class StraddleEngine:
                             call_mark, put_mark, qty, self.short_limit_price, self.long_limit_price
                         )
 
+                if self.state == "LIMITS_PLACED" and self.active_session_id and now_rel >= cutoff_rel:
+                    self.is_short_limit_active = self.is_long_limit_active = False
+                    for order in db.query(StraddleTradeOrder).filter_by(session_id=self.active_session_id, status="PENDING").all():
+                        order.status = "EXPIRED"
+                        order.cancel_reason = "FUTURES_ENTRY_CUTOFF"
+                    db.commit()
+                    self.state = "RECOVERY"
+
                 # Monitor OCO Limits
                 if self.state == "LIMITS_PLACED" and self.active_session_id:
                     tp_multiplier = float(cfg.get("FUTURES_TP_MULTIPLIER", "2"))
@@ -510,7 +478,6 @@ class StraddleEngine:
                         if sess:
                             sess.futures_entry_price = self.short_limit_price
                             sess.futures_tp_price = self.target_tp_price
-                            sess.futures_status = "Open"
                         
                         # Update Futures Orders in DB — fill at exact limit price
                         s_ord = db.query(StraddleTradeOrder).filter(
@@ -544,7 +511,6 @@ class StraddleEngine:
                         if sess:
                             sess.futures_entry_price = self.long_limit_price
                             sess.futures_tp_price = self.target_tp_price
-                            sess.futures_status = "Open"
 
                         # Update Futures Orders in DB — fill at exact limit price
                         l_ord = db.query(StraddleTradeOrder).filter(
@@ -602,18 +568,21 @@ class StraddleEngine:
                                 
                         if tp_hit:
                             # Close positions, calculate profits
+                            sess.exit_reason = "Futures TP Hit"
                             sess.status = "Completed"
-                            sess.futures_status = "Closed"
-                            qty_val = float(cfg.get("TRADE_QTY", "10"))
-                            rec_call = self.active_call_mark if self.active_call_mark > 0 else self.current_call_mark
-                            rec_put = self.active_put_mark if self.active_put_mark > 0 else self.current_put_mark
+                            sess.opt_call_close_price = self.active_call_mark
+                            sess.opt_put_close_price = self.active_put_mark
+                            sess.futures_exit_price = futures_mark if sess.futures_entry_price else 0.0
+                            qty_val = self.session_qty(db, sess.id)
+                            rec_call = self.active_call_mark
+                            rec_put = self.active_put_mark
 
                             # Options Realized PnL
                             options_pnl = ((rec_call + rec_put) - (sess.net_straddle_ask or self.combined_premium)) * qty_val
 
                             # Futures Realized PnL at TP Hit
                             futures_pnl = 0.0
-                            if sess.futures_entry_price is not None:
+                            if sess.futures_entry_price and sess.futures_entry_price > 0:
                                 is_short = (sess.futures_tp_price and sess.futures_tp_price < sess.futures_entry_price)
                                 if is_short:
                                     futures_pnl = (sess.futures_entry_price - futures_mark) * qty_val
@@ -632,6 +601,8 @@ class StraddleEngine:
                             new_bal = old_bal + net_wallet_credit
                             if wallet_item:
                                 wallet_item.value = str(new_bal)
+                            else:
+                                db.add(StraddleConfig(key="PAPER_WALLET_USDT", value=str(new_bal)))
 
                             ledger_entry = StraddleWalletLedger(
                                 session_id=sess.id,
@@ -642,10 +613,10 @@ class StraddleEngine:
                             )
                             db.add(ledger_entry)
                             
-                            qty_val = float(cfg.get("TRADE_QTY", "10"))
+                            qty_val = self.session_qty(db, sess.id)
                             now_ist = datetime.now(ist).replace(tzinfo=None)
-                            rec_call = self.active_call_mark if self.active_call_mark > 0 else self.current_call_mark
-                            rec_put = self.active_put_mark if self.active_put_mark > 0 else self.current_put_mark
+                            rec_call = self.active_call_mark
+                            rec_put = self.active_put_mark
                             
                             call_ord = StraddleTradeOrder(
                                 session_id=sess.id,
@@ -699,18 +670,20 @@ class StraddleEngine:
                 if self.state == "RECOVERY" and self.active_session_id:
                     sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
                     if sess:
-                        rec_call = self.active_call_mark if self.active_call_mark > 0 else self.current_call_mark
-                        rec_put = self.active_put_mark if self.active_put_mark > 0 else self.current_put_mark
+                        rec_call = self.active_call_mark
+                        rec_put = self.active_put_mark
                         current_recovery_val = rec_call + rec_put
                         entry_premium = sess.net_straddle_ask or self.combined_premium
                         
                         recovery_threshold_pct = float(cfg.get("RECOVERY_THRESHOLD_PCT", "0.65"))
                         if current_recovery_val >= (recovery_threshold_pct * entry_premium):
                             sess.status = "Completed"
-                            sess.futures_status = "Closed"
+                            sess.opt_call_close_price = self.active_call_mark
+                            sess.opt_put_close_price = self.active_put_mark
+                            sess.futures_exit_price = futures_mark if sess.futures_entry_price else 0.0
                             sess.exit_reason = f"Recovery Target Hit (>= {int(recovery_threshold_pct * 100)}%)"
                             
-                            qty_val = float(cfg.get("TRADE_QTY", "10"))
+                            qty_val = self.session_qty(db, sess.id)
                             recovery_payout = current_recovery_val * qty_val
                             entry_cost = entry_premium * qty_val
                             sess.pnl_realized = recovery_payout - entry_cost
@@ -720,6 +693,8 @@ class StraddleEngine:
                             new_bal = old_bal + recovery_payout
                             if wallet_item:
                                 wallet_item.value = str(new_bal)
+                            else:
+                                db.add(StraddleConfig(key="PAPER_WALLET_USDT", value=str(new_bal)))
                                 
                             ledger_entry = StraddleWalletLedger(
                                 session_id=sess.id,
@@ -768,12 +743,15 @@ class StraddleEngine:
                     logger.info("Straddle Window Closed (%s). Executing squareoff & config flush...", sq_end)
                     if self.active_session_id:
                         sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
-                        if sess:
+                        if sess and sess.status in ["Open", "OPEN", "MANUAL_SQUAREOFF"]:
+                            sess.exit_reason = sess.exit_reason or ("Manual Emergency Squareoff" if self.state == "SQUAREOFF" else "Scheduled Squareoff")
                             sess.status = "Completed"
-                            sess.futures_status = "Closed"
-                            qty_val = float(cfg.get("TRADE_QTY", "10"))
-                            rec_call = self.active_call_mark if self.active_call_mark > 0 else self.current_call_mark
-                            rec_put  = self.active_put_mark if self.active_put_mark > 0 else self.current_put_mark
+                            sess.opt_call_close_price = self.active_call_mark
+                            sess.opt_put_close_price = self.active_put_mark
+                            sess.futures_exit_price = futures_mark if sess.futures_entry_price else 0.0
+                            qty_val = self.session_qty(db, sess.id)
+                            rec_call = self.active_call_mark
+                            rec_put  = self.active_put_mark
                             
                             # 1. Options Realized PnL
                             recovery_val = (rec_call + rec_put) * qty_val
@@ -782,7 +760,7 @@ class StraddleEngine:
 
                             # 2. Futures Realized PnL (if position was opened)
                             futures_pnl = 0.0
-                            if sess.futures_entry_price is not None:
+                            if sess.futures_entry_price and sess.futures_entry_price > 0:
                                 is_short = (sess.futures_tp_price and sess.futures_tp_price < sess.futures_entry_price)
                                 if is_short:
                                     futures_pnl = (sess.futures_entry_price - futures_mark) * qty_val
@@ -807,6 +785,8 @@ class StraddleEngine:
                             new_bal = old_bal + net_wallet_credit
                             if wallet_item:
                                 wallet_item.value = str(new_bal)
+                            else:
+                                db.add(StraddleConfig(key="PAPER_WALLET_USDT", value=str(new_bal)))
 
                             ledger_entry = StraddleWalletLedger(
                                 session_id=sess.id,
@@ -817,7 +797,7 @@ class StraddleEngine:
                             )
                             db.add(ledger_entry)
                             
-                            qty_val = float(cfg.get("TRADE_QTY", "10"))
+                            qty_val = self.session_qty(db, sess.id)
                             now_ist = datetime.now(ist).replace(tzinfo=None)
                             call_ord = StraddleTradeOrder(
                                 session_id=sess.id,
@@ -847,7 +827,7 @@ class StraddleEngine:
                             db.add(put_ord)
 
                             # Log the futures CLOSE order only if a futures position was actually opened
-                            if sess.futures_entry_price is not None:
+                            if sess.futures_entry_price and sess.futures_entry_price > 0:
                                 futures_close_side = "BUY" if (sess.futures_tp_price and sess.futures_tp_price < sess.futures_entry_price) else "SELL"
                                 futures_close_ord = StraddleTradeOrder(
                                     session_id=sess.id,
@@ -872,7 +852,10 @@ class StraddleEngine:
 
                 db.close()
             except Exception as e:
+                db.rollback()
                 logger.error("Error in Straddle Engine loop: %s", str(e), exc_info=True)
+            finally:
+                db.close()
 
             await asyncio.sleep(2.0)
 

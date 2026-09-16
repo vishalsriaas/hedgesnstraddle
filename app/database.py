@@ -87,7 +87,6 @@ def init_database():
             "COMMAND_TIMEOUT_SECONDS": "120",
             "GLOBAL_PAUSE": "0",
             "SKIP_WEEKENDS": "1",
-            "MAX_OPTION_SPEND": "400.0",
             "VIRTUAL_BALANCE_USDT": "100000.0",
             "MIN_PAPER_BALANCE": "1000.0",
             "Q_MAX_BTC": "1000.0",

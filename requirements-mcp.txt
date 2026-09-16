@@ -1,0 +1,2 @@
+# Independent from the trading application's dependencies.
+mcp>=1.28,<2

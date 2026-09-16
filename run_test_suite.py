@@ -5,6 +5,11 @@ import urllib.request
 import urllib.parse
 import time
 
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
+
 BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8085")
 
 def make_req(url, method="GET", data=None, headers=None):
@@ -116,14 +121,14 @@ def run_suite():
     # -----------------------------------------------------------------
     # TEST 6: Hedge Global Settings Read/Write & Database Persistence
     # -----------------------------------------------------------------
-    test_hedge_payload = {"MAX_OPTION_SPEND": "450.0", "Q_MAX_BTC": "1200.0"}
+    test_hedge_payload = {"Q_MAX_BTC": "1200.0"}
     status, update_hedge = make_req(f"{BASE_URL}/api/v1/config/hedge", method="POST", data=test_hedge_payload, headers=headers)
     status_read, read_hedge = make_req(f"{BASE_URL}/api/v1/config/hedge", headers=headers)
 
     if status == 200 and status_read == 200:
-        max_spend = read_hedge.get("active", {}).get("MAX_OPTION_SPEND")
+        max_qty = read_hedge.get("active", {}).get("Q_MAX_BTC")
         passed_count += 1
-        print(f"✅ [TEST 6/10] Hedge Global Settings & DB Linkage: Saved MAX_OPTION_SPEND=${max_spend} - VERIFIED")
+        print(f"✅ [TEST 6/10] Hedge Global Settings & DB Linkage: Saved Q_MAX_BTC={max_qty} - VERIFIED")
     else:
         print(f"❌ [TEST 6/10] Hedge Global Config Failed")
         return False

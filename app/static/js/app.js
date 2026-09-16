@@ -149,7 +149,7 @@ async function fetchSnapshot() {
             setTextContent(document.getElementById("straddle-hero-spot"), `$${(activeStraddle ? (activeStraddle.btc_entry_spot || btcSpot) : btcSpot).toLocaleString(undefined, {minimumFractionDigits: 2})}`);
             setTextContent(document.getElementById("straddle-hero-pnl"), `${(activeStraddle ? (activeStraddle.pnl_realized || 0) : 0) >= 0 ? '+' : ''}$${(activeStraddle ? (activeStraddle.pnl_realized || 0) : 0).toFixed(2)}`);
             
-            const liveNetPrem = (data.straddle.live_call_mark || 180.50) + (data.straddle.live_put_mark || 195.20);
+            const liveNetPrem = (data.straddle.live_call_mark || 0.0) + (data.straddle.live_put_mark || 0.0);
             setTextContent(document.getElementById("straddle-hero-premium"), `$${(activeStraddle ? (activeStraddle.net_straddle_ask || liveNetPrem) : liveNetPrem).toFixed(2)}`);
             
             // Update Straddle Live Monitor UI
@@ -250,8 +250,8 @@ async function fetchSnapshot() {
                 setTextContent(document.getElementById("timer-sq-left"), "Squareoff Reached");
             }
 
-            const liveCallAsk = (activeStraddle && data.straddle.active_call_mark > 0) ? data.straddle.active_call_mark : (data.straddle.live_call_mark || 180.50);
-            const livePutAsk = (activeStraddle && data.straddle.active_put_mark > 0) ? data.straddle.active_put_mark : (data.straddle.live_put_mark || 195.20);
+            const liveCallAsk = (activeStraddle && data.straddle.active_call_mark > 0) ? data.straddle.active_call_mark : (data.straddle.live_call_mark || 0.0);
+            const livePutAsk = (activeStraddle && data.straddle.active_put_mark > 0) ? data.straddle.active_put_mark : (data.straddle.live_put_mark || 0.0);
 
             if (activeStraddle) {
                 const qty = parseFloat(data.straddle.trade_qty || activeStraddle.qty || 0.1);
@@ -379,7 +379,9 @@ async function fetchSnapshot() {
                     const at1 = slot1.active_trade;
                     setTextContent(document.getElementById("hedge-slot1-active-dir-label"), at1.strategy_label);
                     const pnlEl1 = document.getElementById("hedge-slot1-active-pnl");
-                    if (pnlEl1) {
+                    if (pnlEl1 && at1.pnl_usdt == null) {
+                        setTextContent(pnlEl1, "Quote unavailable");
+                    } else if (pnlEl1) {
                         setTextContent(pnlEl1, `${at1.pnl_usdt >= 0 ? '+' : ''}$${at1.pnl_usdt.toFixed(2)} (${at1.pnl_pct >= 0 ? '+' : ''}${at1.pnl_pct.toFixed(2)}%)`);
                         pnlEl1.style.color = at1.pnl_usdt >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
                     }
@@ -437,7 +439,9 @@ async function fetchSnapshot() {
                     const at2 = slot2.active_trade;
                     setTextContent(document.getElementById("hedge-slot2-active-dir-label"), at2.strategy_label);
                     const pnlEl2 = document.getElementById("hedge-slot2-active-pnl");
-                    if (pnlEl2) {
+                    if (pnlEl2 && at2.pnl_usdt == null) {
+                        setTextContent(pnlEl2, "Quote unavailable");
+                    } else if (pnlEl2) {
                         setTextContent(pnlEl2, `${at2.pnl_usdt >= 0 ? '+' : ''}$${at2.pnl_usdt.toFixed(2)} (${at2.pnl_pct >= 0 ? '+' : ''}${at2.pnl_pct.toFixed(2)}%)`);
                         pnlEl2.style.color = at2.pnl_usdt >= 0 ? "var(--accent-emerald)" : "var(--accent-rose)";
                     }
@@ -471,6 +475,30 @@ async function fetchSnapshot() {
                 formatRuleCheck("hedge-slot2-bear-rule-b", s2Bear.rule_b_valid);
                 formatRuleCheck("hedge-slot2-bear-spend", s2Bear.tv_valid);
 
+                // Missing selection is not a zero-price quote or proof both caps failed.
+                for (const [slotId, slotData] of [[1, slot1], [2, slot2]]) {
+                    for (const [side, data] of [["bull", slotData.bullish], ["bear", slotData.bearish]]) {
+                        const prefix = `hedge-slot${slotId}-${side}`;
+                        setTextContent(document.getElementById(`${prefix}-cost`), data?.estimated_option_cost == null ? "N/A" : `$${data.estimated_option_cost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+                        const markEl = document.getElementById(`${prefix}-mark`);
+                        if (!markEl) continue;
+                        let reasonEl = document.getElementById(`${prefix}-reason`);
+                        if (!reasonEl) {
+                            reasonEl = document.createElement("div");
+                            reasonEl.id = `${prefix}-reason`;
+                            reasonEl.style.cssText = "font-size:12px;color:var(--accent-amber);margin-top:8px";
+                            markEl.parentElement.parentElement.appendChild(reasonEl);
+                        }
+                        const available = data && data.option_mark > 0;
+                        setTextContent(reasonEl, available ? "" : (data?.selection_reason || "No qualifying contract"));
+                        if (!available) {
+                            for (const field of ["strike", "mark", "tp", "rule-b", "spend"]) {
+                                setTextContent(document.getElementById(`${prefix}-${field}`), "N/A");
+                            }
+                        }
+                    }
+                }
+
                 // Condition Badges
                 const updateCond = (elId, isValid, validTxt = "✅ Active", invalidTxt = "❌ Inactive") => {
                     const el = document.getElementById(elId);
@@ -482,7 +510,6 @@ async function fetchSnapshot() {
                 updateCond("hedge-cond-window", hedgeLM.cond_time_window_valid, "✅ Active Session", "❌ Inactive");
                 updateCond("hedge-cond-rule-a", hedgeLM.cond_rule_a_valid, "✅ Matched", "❌ Invalid");
                 updateCond("hedge-cond-rule-b", hedgeLM.cond_rule_b_valid, "✅ Valid", "❌ Exceeded");
-                updateCond("hedge-cond-rule-c", hedgeLM.cond_rule_c_valid, "✅ Pass", "❌ Strike Clash");
             }
 
             const activeHedge = data.hedge.active_session;
@@ -520,7 +547,7 @@ async function fetchSnapshot() {
                     <tr>
                         <td><b>#${h.id}</b></td>
                         <td>${h.symbol}</td>
-                        <td><span class="badge badge-info">${h.expiry_session || '-'}</span></td>
+                        <td><span class="badge badge-info">${formatExpirySession(h.expiry_session)}</span></td>
                         <td><span class="badge ${h.status === 'Open' ? 'badge-success' : 'badge-warning'}">${h.status}</span></td>
                         <td>$${(h.bull_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>$${(h.bear_entry || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
@@ -597,16 +624,17 @@ async function fetchSnapshot() {
                     <tr>
                         <td><b>#${p.id}</b></td>
                         <td>${p.symbol}</td>
-                        <td><span class="badge ${p.side === 'BUY' ? 'badge-success' : 'badge-danger'}">${p.side}</span></td>
+                        <td><span class="badge ${p.side === 'BUY' || p.side === 'LONG' ? 'badge-success' : 'badge-danger'}">${p.side}</span></td>
                         <td>$${(p.entry_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td>$${p.current_price == null ? '?' : p.current_price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                         <td>${p.qty}</td>
                         <td>${p.leverage}x</td>
-                        <td style="color: ${(p.unrealized_pnl || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">$${(p.unrealized_pnl || 0).toFixed(2)}</td>
+                        <td style="color: ${(p.unrealized_pnl || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">${(p.unrealized_pnl || 0) >= 0 ? '+' : ''}$${p.unrealized_pnl == null ? '?' : p.unrealized_pnl.toFixed(2)}</td>
                     </tr>
                 `).join("");
                 setInnerHTML(hedgePositionsViewBody, posHtml);
             } else if (hedgePositionsViewBody) {
-                setInnerHTML(hedgePositionsViewBody, '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>');
+                setInnerHTML(hedgePositionsViewBody, '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No open hedge positions active.</td></tr>');
             }
 
             // Render Hedge Trade Orders & Executions Table
@@ -1021,3 +1049,43 @@ async function loadAuditLogs() {
         console.error(err);
     }
 }
+
+function formatExpirySession(val) {
+    if (!val || val === '-') return '-';
+    if (/^\d{6}$/.test(val)) {
+        const yy = parseInt(val.slice(0, 2));
+        const mm = parseInt(val.slice(2, 4)) - 1; // 0-based month
+        const dd = parseInt(val.slice(4, 6));
+        const date = new Date(2000 + yy, mm, dd);
+        if (!isNaN(date.getTime())) {
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            return `${val} (${dd}-${months[mm]})`;
+        }
+    }
+    return val;
+}
+window.formatExpirySession = formatExpirySession;
+
+async function resetHedgeEngine() {
+    if (!confirm("Are you sure you want to clear all Hedge session records, orders, open positions, fills, ledger entries and reset paper wallet balance? This action cannot be undone.")) {
+        return;
+    }
+    if (!authToken) await ensureAuthToken();
+    try {
+        const res = await fetch("/api/v1/dashboard/hedge/reset", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            alert(data.message || "Hedge records reset successfully.");
+            fetchSnapshot();
+        } else {
+            alert("Error executing hedge reset.");
+        }
+    } catch (e) {
+        console.error("Hedge reset error:", e);
+        alert("Error executing hedge reset.");
+    }
+}
+window.resetHedgeEngine = resetHedgeEngine;
