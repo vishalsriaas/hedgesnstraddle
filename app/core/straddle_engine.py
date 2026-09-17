@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import math
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 import pytz
 ist = pytz.timezone('Asia/Kolkata')
 from typing import Dict, Any, Optional, Tuple, List
@@ -9,11 +10,13 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.schema import (
     StraddleConfig, PendingConfig, ConfigAuditLog, StraddleSession, 
-    StraddleTradeOrder, StraddleFill, StraddleWalletLedger
+    StraddleTradeOrder, StraddleFill, StraddleWalletLedger, StraddleSessionEvent
 )
 from app.core.binance_client import get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_tickers, get_btc_options_mark_prices
 
+from app.core.binance_client import get_futures_trade_anchor
 from app.core.market_data import option_mark, unexpired
+from app.core.futures_targets import create_target, target_for_session, replay_target, replay_complete, record_execution
 
 logger = logging.getLogger("hedgesnstraddle.straddle_engine")
 
@@ -152,6 +155,45 @@ class StraddleEngine:
         if not order or not math.isfinite(order.qty) or order.qty <= 0:
             raise ValueError("Invalid or missing original straddle fill quantity")
         return order.qty
+
+    def ensure_futures_target(self, db, sess, now, anchor=None):
+        order, event = target_for_session(db, StraddleTradeOrder, StraddleSessionEvent, sess.id)
+        if order is None:
+            entry = db.query(StraddleTradeOrder).filter(
+                StraddleTradeOrder.session_id == sess.id,
+                StraddleTradeOrder.leg_label.in_(["SHORT_LIMIT", "LONG_LIMIT"]),
+                StraddleTradeOrder.status == "FILLED").one()
+            order = StraddleTradeOrder(session_id=sess.id, symbol=entry.symbol,
+                asset_type="FUTURES", side="BUY" if entry.side == "SELL" else "SELL",
+                leg_label="FUTURES_CLOSE", order_type="LIMIT", qty=entry.qty,
+                price=sess.futures_tp_price, status="PENDING", created_at=now.replace(tzinfo=None))
+            event = create_target(db, order, StraddleSessionEvent, now, anchor=anchor)
+        return order, event
+
+    async def ensure_entry_tracking(self, db, sess, anchor=None):
+        primary, event = target_for_session(db, StraddleTradeOrder, StraddleSessionEvent,
+                                           sess.id, event_type="FUTURES_ENTRY_TRACKING")
+        if event:
+            return primary, event
+        orders = db.query(StraddleTradeOrder).filter_by(session_id=sess.id, status="PENDING", asset_type="FUTURES").all()
+        short = next(o for o in orders if o.leg_label == "SHORT_LIMIT")
+        long = next(o for o in orders if o.leg_label == "LONG_LIMIT")
+        legacy = anchor is None
+        original_times = short.created_at, long.created_at
+        if legacy:
+            anchor = await get_futures_trade_anchor()
+            logger.warning("Session %s: legacy pending OCO replay starts now; historical fills not invented", sess.id)
+        event = create_target(db, short, StraddleSessionEvent, datetime.now(ist),
+                              anchor=anchor, event_type="FUTURES_ENTRY_TRACKING", other_order=long)
+        if legacy:
+            short.created_at, long.created_at = original_times
+        return short, event
+
+    def session_deadline(self, sess, clock):
+        entry = ist.localize(sess.created_at) if sess.created_at.tzinfo is None else sess.created_at.astimezone(ist)
+        h, m = map(int, clock.split(":"))
+        deadline = entry.replace(hour=h, minute=m, second=0, microsecond=0)
+        return deadline + timedelta(days=1) if deadline <= entry else deadline
 
     def restore_session(self, db):
         manual = self.state == "SQUAREOFF"
@@ -342,6 +384,7 @@ class StraddleEngine:
                         if not math.isfinite(qty) or qty <= 0:
                             raise ValueError("TRADE_QTY must be positive")
 
+                        entry_anchor = await get_futures_trade_anchor()
                         now_ist = datetime.now(ist).replace(tzinfo=None)
 
                         # 1. Create a Straddle Session in database
@@ -426,6 +469,7 @@ class StraddleEngine:
                         db.add(short_limit_ord)
                         db.add(long_limit_ord)
                         db.flush()
+                        await self.ensure_entry_tracking(db, new_sess, anchor=entry_anchor)
 
                         # 4. Deduct option entry premium cost from virtual margin account & record wallet ledger
                         total_cost = self.combined_premium * qty
@@ -457,124 +501,79 @@ class StraddleEngine:
                             call_mark, put_mark, qty, self.short_limit_price, self.long_limit_price
                         )
 
-                if self.state == "LIMITS_PLACED" and self.active_session_id and now_rel >= cutoff_rel:
-                    self.is_short_limit_active = self.is_long_limit_active = False
-                    for order in db.query(StraddleTradeOrder).filter_by(session_id=self.active_session_id, status="PENDING").all():
-                        order.status = "EXPIRED"
-                        order.cancel_reason = "FUTURES_ENTRY_CUTOFF"
-                    db.commit()
-                    self.state = "RECOVERY"
-
-                # Monitor OCO Limits
+                # Replay both entry limits together, in exchange trade-ID order.
                 if self.state == "LIMITS_PLACED" and self.active_session_id:
-                    tp_multiplier = float(cfg.get("FUTURES_TP_MULTIPLIER", "2"))
-                    
-                    # Check if either limit is triggered (use futures_mark for futures market)
-                    if futures_mark >= self.short_limit_price and self.is_short_limit_active:
-                        # Short Limit triggered: Fill Short futures order at limit price, Cancel Long Limit
-                        self.is_long_limit_active = False
-                        # Limit order fills at exact limit price, TP calculated from that
-                        self.target_tp_price = self.short_limit_price - (self.combined_premium * tp_multiplier)
-                        
-                        sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
-                        if sess:
-                            sess.futures_entry_price = self.short_limit_price
-                            sess.futures_tp_price = self.target_tp_price
-                        
-                        # Update Futures Orders in DB — fill at exact limit price
-                        s_ord = db.query(StraddleTradeOrder).filter(
-                            StraddleTradeOrder.session_id == self.active_session_id,
-                            StraddleTradeOrder.leg_label == "SHORT_LIMIT"
-                        ).first()
-                        if s_ord:
-                            s_ord.status = "FILLED"
-                            s_ord.price = self.short_limit_price
-
-                        l_ord = db.query(StraddleTradeOrder).filter(
-                            StraddleTradeOrder.session_id == self.active_session_id,
-                            StraddleTradeOrder.leg_label == "LONG_LIMIT"
-                        ).first()
-                        if l_ord:
-                            l_ord.status = "CANCELLED"
-                            l_ord.cancel_reason = "OCO_CANCELLED"
-
-                        db.commit()
-                        
+                    sess = db.get(StraddleSession, self.active_session_id)
+                    primary, tracking = await self.ensure_entry_tracking(db, sess)
+                    counterpart = db.query(StraddleTradeOrder).filter_by(
+                        session_id=sess.id, leg_label="LONG_LIMIT").one()
+                    # Entry cutoff is exclusive; recover preceding trades before expiry.
+                    cutoff = self.session_deadline(sess, cutoff_time) - timedelta(milliseconds=1)
+                    hit = await replay_target(primary, tracking, datetime.now(ist),
+                                              until=cutoff, other_order=counterpart)
+                    if hit:
+                        filled = primary if hit["order_id"] == primary.id else counterpart
+                        cancelled = counterpart if filled is primary else primary
+                        record_execution(filled, hit)
+                        cancelled.status = "CANCELLED"
+                        cancelled.cancel_reason = "OCO_CANCELLED"
+                        db.add(StraddleFill(session_id=sess.id, order_id=filled.id,
+                            instrument=filled.symbol, side=filled.side, fill_price=filled.price,
+                            fill_qty=filled.qty, fee=0.0, created_at=filled.filled_at))
+                        multiplier = float(cfg.get("FUTURES_TP_MULTIPLIER", "2"))
+                        sess.futures_entry_price = filled.price
+                        sess.futures_tp_price = filled.price + (-1 if filled.side == "SELL" else 1) * sess.net_straddle_ask * multiplier
+                        self.target_tp_price = sess.futures_tp_price
+                        db.flush()
+                        target_anchor = dict(active_ms=hit["trade_time_ms"],
+                            last_id=hit["aggregate_trade_id"], last_trade_ms=hit["trade_time_ms"],
+                            activation_trade_id=hit["aggregate_trade_id"],
+                            clock_offset_ms=json.loads(tracking.payload_json).get("clock_offset_ms", 0))
+                        self.ensure_futures_target(db, sess, datetime.now(ist), anchor=target_anchor)
+                        self.is_short_limit_active = self.is_long_limit_active = False
                         self.state = "IN_TRADE"
-                        logger.info("OCO Short Limit triggered at $%.2f! Target TP set at $%.2f", self.short_limit_price, self.target_tp_price)
-                        
-                    elif futures_mark <= self.long_limit_price and self.is_long_limit_active:
-                        # Long Limit triggered: Fill Long futures order at limit price, Cancel Short Limit
-                        self.is_short_limit_active = False
-                        # Limit order fills at exact limit price, TP calculated from that
-                        self.target_tp_price = self.long_limit_price + (self.combined_premium * tp_multiplier)
-                        
-                        sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
-                        if sess:
-                            sess.futures_entry_price = self.long_limit_price
-                            sess.futures_tp_price = self.target_tp_price
-
-                        # Update Futures Orders in DB — fill at exact limit price
-                        l_ord = db.query(StraddleTradeOrder).filter(
-                            StraddleTradeOrder.session_id == self.active_session_id,
-                            StraddleTradeOrder.leg_label == "LONG_LIMIT"
-                        ).first()
-                        if l_ord:
-                            l_ord.status = "FILLED"
-                            l_ord.price = self.long_limit_price
-
-                        s_ord = db.query(StraddleTradeOrder).filter(
-                            StraddleTradeOrder.session_id == self.active_session_id,
-                            StraddleTradeOrder.leg_label == "SHORT_LIMIT"
-                        ).first()
-                        if s_ord:
-                            s_ord.status = "CANCELLED"
-                            s_ord.cancel_reason = "OCO_CANCELLED"
-
-                        db.commit()
-                        
-                        self.state = "IN_TRADE"
-                        logger.info("OCO Long Limit triggered at $%.2f! Target TP set at $%.2f", self.long_limit_price, self.target_tp_price)
-                        
-                    # Check if Cutoff time reached without triggers
-                    elif now_rel >= cutoff_rel:
-                        self.is_short_limit_active = False
-                        self.is_long_limit_active = False
+                        logger.info("OCO %s filled at %.8f; exchange time %s; processed %s",
+                                    filled.side, filled.price, filled.filled_at, filled.processed_at)
+                    elif replay_complete(tracking, cutoff):
+                        for order in (primary, counterpart):
+                            order.status = "EXPIRED"
+                            order.cancel_reason = "FUTURES_ENTRY_CUTOFF"
+                        self.is_short_limit_active = self.is_long_limit_active = False
                         self.state = "RECOVERY"
-
-                        # Expire untriggered pending futures limit orders
-                        pending_orders = db.query(StraddleTradeOrder).filter(
-                            StraddleTradeOrder.session_id == self.active_session_id,
-                            StraddleTradeOrder.status == "PENDING"
-                        ).all()
-                        for p_ord in pending_orders:
-                            p_ord.status = "EXPIRED"
-                        db.commit()
-
-                        logger.info("OCO Limits expired at cutoff (%s). Entering Premium Recovery mode.", cutoff_time)
+                    db.commit()
 
                 # Monitor In Trade TP Target
                 if self.state == "IN_TRADE" and self.active_session_id:
                     sess = db.query(StraddleSession).filter(StraddleSession.id == self.active_session_id).first()
                     if sess and sess.futures_tp_price:
-                        # Verify if Futures TP has been hit
-                        tp_hit = False
-                        if sess.futures_entry_price and sess.futures_tp_price < sess.futures_entry_price:
-                            # Short position: TP hits when futures_mark drops to or below target
-                            if futures_mark <= sess.futures_tp_price:
-                                tp_hit = True
-                        elif sess.futures_entry_price and sess.futures_tp_price > sess.futures_entry_price:
-                            # Long position: TP hits when futures_mark rises to or above target
-                            if futures_mark >= sess.futures_tp_price:
-                                tp_hit = True
-                                
+                        target_order, tracking = target_for_session(
+                            db, StraddleTradeOrder, StraddleSessionEvent, sess.id)
+                        if target_order is None:
+                            target_order, tracking = self.ensure_futures_target(db, sess, datetime.now(ist), anchor=await get_futures_trade_anchor())
+                            logger.warning("Straddle session %s: legacy TP tracking starts now; earlier history not inferred", sess.id)
+                            db.commit()
+                        if target_order.qty != self.session_qty(db, sess.id) or target_order.price != sess.futures_tp_price:
+                            raise ValueError("DATA_GAP: Futures TP does not match the held straddle position")
+                        if target_order.side != ("BUY" if sess.futures_tp_price < sess.futures_entry_price else "SELL"):
+                            raise ValueError("DATA_GAP: Futures TP side does not match the held straddle position")
+                        entry_time = ist.localize(sess.created_at) if sess.created_at.tzinfo is None else sess.created_at.astimezone(ist)
+                        close_h, close_m = map(int, sq_end.split(":"))
+                        deadline = entry_time.replace(hour=close_h, minute=close_m, second=0, microsecond=0)
+                        if deadline <= entry_time:
+                            deadline += timedelta(days=1)
+                        tp_hit = await replay_target(target_order, tracking, datetime.now(ist), until=deadline)
+                        if not tp_hit:
+                            db.commit()  # Durable replay progress, even with no fill.
+                            if datetime.now(ist) >= deadline and not replay_complete(tracking, deadline):
+                                raise ValueError("DATA_GAP: Recovering futures TP history before scheduled close")
+
                         if tp_hit:
                             # Close positions, calculate profits
                             sess.exit_reason = "Futures TP Hit"
                             sess.status = "Completed"
                             sess.opt_call_close_price = self.active_call_mark
                             sess.opt_put_close_price = self.active_put_mark
-                            sess.futures_exit_price = futures_mark if sess.futures_entry_price else 0.0
+                            sess.futures_exit_price = target_order.price
                             qty_val = self.session_qty(db, sess.id)
                             rec_call = self.active_call_mark
                             rec_put = self.active_put_mark
@@ -587,9 +586,9 @@ class StraddleEngine:
                             if sess.futures_entry_price and sess.futures_entry_price > 0:
                                 is_short = (sess.futures_tp_price and sess.futures_tp_price < sess.futures_entry_price)
                                 if is_short:
-                                    futures_pnl = (sess.futures_entry_price - futures_mark) * qty_val
+                                    futures_pnl = (sess.futures_entry_price - target_order.price) * qty_val
                                 else:
-                                    futures_pnl = (futures_mark - sess.futures_entry_price) * qty_val
+                                    futures_pnl = (target_order.price - sess.futures_entry_price) * qty_val
 
                             net_realized_pnl = round(options_pnl + futures_pnl, 2)
                             sess.pnl_realized = net_realized_pnl
@@ -647,26 +646,17 @@ class StraddleEngine:
                             db.add(call_ord)
                             db.add(put_ord)
 
-                            # Log the futures CLOSE order (opposing side to close the open position)
-                            futures_close_side = "BUY" if (sess.futures_tp_price and sess.futures_tp_price < sess.futures_entry_price) else "SELL"
-                            futures_close_ord = StraddleTradeOrder(
-                                session_id=sess.id,
-                                symbol="BTC-USDT-FUTURES",
-                                asset_type="FUTURES",
-                                side=futures_close_side,
-                                leg_label="FUTURES_CLOSE",
-                                order_type="MARKET",
-                                qty=qty_val,
-                                price=futures_mark,
-                                status="FILLED",
-                                created_at=now_ist
-                            )
-                            db.add(futures_close_ord)
+                            # Fill the resting target once; preserve its locked price.
+                            record_execution(target_order, tp_hit)
+                            db.add(StraddleFill(session_id=sess.id, order_id=target_order.id, instrument=target_order.symbol,
+                                side=target_order.side, fill_price=target_order.price,
+                                fill_qty=target_order.qty, fee=0.0,
+                                created_at=datetime.fromtimestamp(tp_hit["trade_time_ms"] / 1000, ist).replace(tzinfo=None)))
 
                             db.commit()
                             self.active_session_id = None
                             self.state = "COMPLETED"
-                            logger.info("Futures TP Target hit at $%.2f! Closed all options.", spot)
+                            logger.info("Futures TP limit filled at $%.2f! Closed all options.", target_order.price)
 
                 # Monitor Recovery State (80% premium threshold)
                 if self.state == "RECOVERY" and self.active_session_id:
@@ -739,6 +729,9 @@ class StraddleEngine:
                             self.active_session_id = None
                             self.state = "COMPLETED"
                             logger.info("Premium recovered to 80%%! Closed all options for Session #%s.", sess.id)
+
+                if self.state == "LIMITS_PLACED" and now_rel >= sq_end_rel:
+                    raise ValueError("DATA_GAP: Entry cutoff history not yet verified; automatic close deferred")
 
                 # Hard Squareoff / Manual Squareoff
                 if self.state == "SQUAREOFF" or (now_rel >= sq_end_rel and self.state in ["IN_TRADE", "ENTRY_WINDOW", "LIMITS_PLACED", "RECOVERY"]):

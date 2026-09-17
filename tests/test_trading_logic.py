@@ -3,7 +3,8 @@
 Run: .venv/Scripts/python.exe -m unittest discover -s tests -v
 """
 import asyncio
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timezone, timedelta
 import unittest
 import time
 from unittest.mock import AsyncMock, patch
@@ -16,26 +17,31 @@ import app.core.straddle_engine as se
 import app.core.hedge_engine as he
 import app.core.binance_client as bc
 import app.core.market_data as md
+import app.core.futures_targets as ft
 from app.models.schema import (
     Base, StraddleConfig, StraddleSession, StraddleTradeOrder, StraddleWalletLedger,
     HedgeConfig, HedgeStrategyConfig, HedgeSession, HedgeTradeOrder,
     HedgeOpenPosition, HedgePaperLedgerEntry, HedgeSessionEvent, HedgeRuntimeCommand,
+    HedgeFill, StraddleFill, StraddleSessionEvent,
 )
 
 
 class Clock(datetime):
+    day_now = 8
     hour_now = 6
     minute_now = 0
+    elapsed_seconds = 0
 
     @classmethod
     def now(cls, tz=None):
-        value = cls(2026, 9, 8, cls.hour_now, cls.minute_now, tzinfo=he.ist)
+        value = cls(2026, 9, cls.day_now, cls.hour_now, cls.minute_now, tzinfo=he.ist) + timedelta(seconds=cls.elapsed_seconds)
         return value.astimezone(tz) if tz else value.replace(tzinfo=None)
 
 
 class TradingLogicTests(unittest.TestCase):
     def setUp(self):
-        Clock.hour_now, Clock.minute_now = 6, 0
+        Clock.day_now = 8
+        Clock.hour_now, Clock.minute_now, Clock.elapsed_seconds = 6, 0, 0
         self.engine = create_engine('sqlite://', poolclass=StaticPool,
                                     connect_args={'check_same_thread': False})
         Base.metadata.create_all(self.engine)
@@ -48,11 +54,30 @@ class TradingLogicTests(unittest.TestCase):
                        for strike in (59500, 60000, 60500, 61000)
                        for side in ('C', 'P')]
         async def price():
+            Clock.elapsed_seconds += 6
             return self.price
         async def quotes():
             return self.quotes
+        async def trades(symbol, **kwargs):
+            # Separate mock trade-history feed; dedicated tests cover differing marks.
+            timestamp = ft.millis(Clock.now(he.ist)) - 1
+            if kwargs.get('end_ms') is not None:
+                timestamp = min(timestamp, kwargs['end_ms'])
+            return [dict(a=kwargs.get('from_id') or 1, T=timestamp,
+                         p=str(self.price), q='1')]
+        patcher = patch.object(ft, 'get_futures_aggregate_trades', trades)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # Schedule tests jump hours at once; allow replay to catch up in one cycle.
+        patcher = patch.object(ft, 'MAX_PAGES', 48)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        async def anchor():
+            now = ft.millis(Clock.now(he.ist))
+            return dict(last_id=0, last_trade_ms=now-1, active_ms=now, clock_offset_ms=0)
         for module in (se, he):
             for name, value in [('SessionLocal', self.DB), ('datetime', Clock),
+                                ('get_futures_trade_anchor', anchor),
                                 ('get_btc_spot_price', price),
                                 ('get_btc_futures_mark_price', price),
                                 ('get_btc_options_mark_prices', quotes)]:
@@ -109,6 +134,196 @@ class TradingLogicTests(unittest.TestCase):
         self.assertEqual((order.price, order.status), (60200, 'FILLED'))
         self.assertEqual(bot.state, 'IN_TRADE')
 
+    def test_reported_1740_crossing_has_exchange_fill_time_not_poll_time(self):
+        Clock.day_now, Clock.hour_now, Clock.minute_now = 17, 17, 5
+        for k, v in dict(WINDOW_START='17:05', WINDOW_END='18:00',
+                         FUTURES_ENTRY_CUTOFF='18:30', SQ_END='19:00',
+                         MAX_TOTAL_MARK='1500', OCO_LIMIT_MULTIPLIER='.4',
+                         FUTURES_TP_MULTIPLIER='.2').items():
+            self.config(StraddleConfig, k, v)
+        self.price = 76310
+        self.quotes = [dict(symbol='BTC-260918-76250-C', markPrice='435.809'),
+                       dict(symbol='BTC-260918-76250-P', markPrice='348.808')]
+        self.enter_straddle()
+        short = self.db.query(StraddleTradeOrder).filter_by(leg_label='SHORT_LIMIT').one()
+        placed = short.created_at
+        self.assertAlmostEqual(short.price, 76563.8468)
+        crossing = datetime(2026,9,17,17,40,12,758000,tzinfo=he.ist)
+        rows = [dict(a=1,T=ft.millis(crossing)-1,p='76563.80',q='1'),
+                dict(a=2,T=ft.millis(crossing),p='76563.90',q='1'),
+                dict(a=3,T=ft.millis(crossing)+1,p='76550',q='1')]
+        async def history(symbol, **kw):
+            return [r for r in rows if (kw.get('from_id') is None or r['a'] >= kw['from_id'])]
+        Clock.minute_now, Clock.elapsed_seconds = 41, 10
+        with patch.object(ft,'get_futures_aggregate_trades',history):
+            self.run_straddle(se.StraddleEngine())
+        self.db.refresh(short)
+        self.assertEqual(short.created_at, placed)
+        self.assertEqual(short.filled_at, crossing.replace(tzinfo=None))
+        self.assertEqual(short.processed_at, datetime(2026,9,17,17,41,22))
+        self.assertEqual(short.aggregate_trade_id, 2)
+        self.assertEqual(short.status, 'FILLED')
+        self.assertEqual(self.db.query(StraddleFill).filter_by(order_id=short.id).one().created_at, short.filled_at)
+
+    def test_entry_and_target_in_same_batch_follow_id_order_in_same_millisecond(self):
+        bot = self.enter_straddle()
+        tracking = self.db.query(StraddleSessionEvent).filter_by(event_type='FUTURES_ENTRY_TRACKING').one()
+        active = json.loads(tracking.payload_json)['active_ms']
+        rows = [dict(a=1,T=active+1000,p='60300',q='1'),
+                dict(a=2,T=active+1000,p='59700',q='1')]
+        async def history(symbol, **kw):
+            return [r for r in rows if kw.get('from_id') is None or r['a'] >= kw['from_id']]
+        with patch.object(ft,'get_futures_aggregate_trades',history):
+            self.run_straddle(bot)
+        short=self.db.query(StraddleTradeOrder).filter_by(leg_label='SHORT_LIMIT').one()
+        long=self.db.query(StraddleTradeOrder).filter_by(leg_label='LONG_LIMIT').one()
+        target=self.db.query(StraddleTradeOrder).filter_by(leg_label='FUTURES_CLOSE').one()
+        self.assertEqual((short.status,long.status,target.status),('FILLED','CANCELLED','FILLED'))
+        self.assertEqual((short.aggregate_trade_id,target.aggregate_trade_id),(1,2))
+        self.assertEqual(short.filled_at,target.filled_at)
+        self.assertEqual(target.created_at,short.filled_at)
+        self.assertEqual(self.db.query(StraddleSession).one().pnl_realized,400)
+        self.assertEqual(self.db.query(StraddleFill).count(),2)
+        self.run_straddle(se.StraddleEngine())
+        self.assertEqual(self.db.query(StraddleFill).count(),2)
+
+    def test_oco_chooses_first_trade_not_sell_side_priority(self):
+        bot=self.enter_straddle()
+        event=self.db.query(StraddleSessionEvent).filter_by(event_type='FUTURES_ENTRY_TRACKING').one()
+        active=json.loads(event.payload_json)['active_ms']
+        rows=[dict(a=1,T=active+1000,p='59700',q='1'),dict(a=2,T=active+2000,p='60300',q='1')]
+        async def history(symbol,**kw):
+            return [r for r in rows if kw.get('from_id') is None or r['a'] >= kw['from_id']]
+        with patch.object(ft,'get_futures_aggregate_trades',history): self.run_straddle(bot)
+        self.assertEqual(self.db.query(StraddleTradeOrder).filter_by(leg_label='LONG_LIMIT').one().status,'FILLED')
+        self.assertEqual(self.db.query(StraddleTradeOrder).filter_by(leg_label='SHORT_LIMIT').one().status,'CANCELLED')
+
+    def test_cutoff_waits_for_contiguous_later_trade_and_recovers_late_entry(self):
+        bot=self.enter_straddle()
+        Clock.hour_now=11
+        with patch.object(ft,'get_futures_aggregate_trades',AsyncMock(return_value=[])):
+            self.run_straddle(bot)
+        self.assertEqual(bot.state,'LIMITS_PLACED')
+        crossing=datetime(2026,9,8,10,59,59,999000,tzinfo=he.ist)
+        rows=[dict(a=1,T=ft.millis(crossing),p='60300',q='1'),
+              dict(a=2,T=ft.millis(crossing)+1,p='60300',q='1')]
+        async def history(symbol,**kw):
+            return [r for r in rows if kw.get('from_id') is None or r['a'] >= kw['from_id']]
+        with patch.object(ft,'get_futures_aggregate_trades',history): self.run_straddle(se.StraddleEngine())
+        order=self.db.query(StraddleTradeOrder).filter_by(leg_label='SHORT_LIMIT').one()
+        self.assertEqual(order.status,'FILLED')
+        self.assertEqual(order.filled_at,crossing.replace(tzinfo=None))
+
+    def test_entry_cutoff_excludes_trade_exactly_at_deadline(self):
+        bot=self.enter_straddle()
+        Clock.hour_now=11
+        trade=dict(a=1,T=ft.millis(datetime(2026,9,8,11,tzinfo=he.ist)),p='60300',q='1')
+        with patch.object(ft,'get_futures_aggregate_trades',AsyncMock(return_value=[trade])):
+            self.run_straddle(bot)
+        self.assertEqual(self.db.query(StraddleTradeOrder).filter_by(leg_label='SHORT_LIMIT').one().status,'EXPIRED')
+        self.assertEqual(self.db.query(StraddleFill).count(),0)
+
+    def test_hedge_target_recovers_crossing_when_latest_mark_never_hits(self):
+        self.price = 76471.88
+        self.quotes = [dict(symbol='BTC-260908-76500-P', markPrice='81.31')]
+        cfg = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='1st Trader').one()
+        cfg.contract_qty = 10
+        self.db.commit()
+        sid = self.hedge_entry(he.HedgeEngine())
+        order, event = ft.target_for_session(self.db, HedgeTradeOrder, HedgeSessionEvent, sid)
+        active = json.loads(event.payload_json)['active_ms']
+        self.assertAlmostEqual(order.price, 76553.19)
+        # Price crosses and returns; the current mark remains below the target.
+        trades = [dict(a=1, T=active+1000, p='76500', q='1'),
+                  dict(a=2, T=active+2000, p='76560', q='1'),
+                  dict(a=3, T=active+3000, p='76510', q='1')]
+        with patch.object(ft, 'get_futures_aggregate_trades', AsyncMock(return_value=trades)):
+            asyncio.run(he.HedgeEngine().tick(self.db))
+        self.assertEqual((order.order_type, order.status), ('LIMIT', 'FILLED'))
+        self.assertAlmostEqual(self.db.get(HedgeSession, sid).bull_exit, 76553.19)
+        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 813.10)
+        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100813.10)
+        fill = self.db.query(HedgeFill).one()
+        self.assertAlmostEqual(fill.fill_price, order.price)
+        with patch.object(ft, 'get_futures_aggregate_trades', AsyncMock()) as fetch:
+            asyncio.run(he.HedgeEngine().tick(self.db))
+        fetch.assert_not_awaited()
+        self.assertEqual(self.db.query(HedgeFill).count(), 1)
+        self.assertEqual(self.db.query(HedgePaperLedgerEntry).count(), 1)
+
+    def test_hedge_mark_crossing_without_trade_crossing_does_not_fill(self):
+        sid = self.hedge_entry(he.HedgeEngine())
+        order, event = ft.target_for_session(self.db, HedgeTradeOrder, HedgeSessionEvent, sid)
+        active = json.loads(event.payload_json)['active_ms']
+        self.price = 60500
+        with patch.object(ft, 'get_futures_aggregate_trades', AsyncMock(return_value=[dict(a=1, T=active+1000, p='60050', q='1')])):
+            asyncio.run(he.HedgeEngine().tick(self.db))
+        self.assertEqual(order.status, 'PENDING')
+        self.assertEqual(self.db.query(HedgeOpenPosition).count(), 2)
+        self.assertEqual(self.db.query(HedgePaperLedgerEntry).count(), 0)
+
+    def test_hedge_history_failure_then_recovery_does_not_double_credit(self):
+        sid = self.hedge_entry(he.HedgeEngine())
+        order, event = ft.target_for_session(self.db, HedgeTradeOrder, HedgeSessionEvent, sid)
+        before = event.payload_json
+        self.price = 60500
+        with patch.object(ft, 'get_futures_aggregate_trades', AsyncMock(side_effect=ValueError('DATA_GAP'))):
+            with self.assertLogs(he.logger, level='WARNING'):
+                asyncio.run(he.HedgeEngine().tick(self.db))
+        self.assertEqual(order.status, 'PENDING')
+        self.assertEqual(event.payload_json, before)
+        self.assertEqual(self.db.query(HedgePaperLedgerEntry).count(), 0)
+        asyncio.run(he.HedgeEngine().tick(self.db))
+        self.assertEqual(order.status, 'FILLED')
+        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 100)
+
+    def test_straddle_recovers_crossing_and_credits_limit_not_mark(self):
+        bot = self.enter_straddle()
+        self.price = 60300
+        self.run_straddle(bot)
+        sid = bot.active_session_id
+        order, event = ft.target_for_session(self.db, StraddleTradeOrder, StraddleSessionEvent, sid)
+        active = json.loads(event.payload_json)['active_ms']
+        next_id = json.loads(event.payload_json)['last_id'] + 1
+        trades = [dict(a=next_id, T=active+1000, p='60300', q='1'),
+                  dict(a=next_id+1, T=active+2000, p='59700', q='1'),
+                  dict(a=next_id+2, T=active+3000, p='60300', q='1')]
+        with patch.object(ft, 'get_futures_aggregate_trades', AsyncMock(return_value=trades)):
+            self.run_straddle(se.StraddleEngine())
+        self.db.refresh(order)
+        sess = self.db.get(StraddleSession, sid)
+        self.assertEqual((order.status, order.order_type, order.price), ('FILLED', 'LIMIT', 59800))
+        self.assertEqual(sess.futures_exit_price, 59800)
+        self.assertEqual(sess.pnl_realized, 400)
+        self.assertEqual(float(self.db.get(StraddleConfig, 'PAPER_WALLET_USDT').value), 100400)
+        self.assertEqual(self.db.query(StraddleFill).filter_by(order_id=order.id).one().fill_price, 59800)
+        self.run_straddle(se.StraddleEngine())
+        self.assertEqual(self.db.query(StraddleFill).count(), 2)
+        self.assertEqual(self.db.query(StraddleTradeOrder).filter_by(leg_label='FUTURES_CLOSE').count(), 1)
+
+    def test_straddle_long_target_and_manual_cancel(self):
+        bot = self.enter_straddle()
+        self.price = 59700
+        self.run_straddle(bot)
+        sid = bot.active_session_id
+        order, event = ft.target_for_session(self.db, StraddleTradeOrder, StraddleSessionEvent, sid)
+        self.assertEqual((order.price, order.side), (60200, 'SELL'))
+        bot.state = 'SQUAREOFF'
+        self.run_straddle(bot)
+        self.db.refresh(order)
+        self.assertEqual(order.status, 'CANCELLED')
+        self.assertEqual(self.db.query(StraddleFill).filter_by(order_id=order.id).count(), 0)
+
+    def test_straddle_long_target_exact_touch(self):
+        bot = self.enter_straddle()
+        self.price = 59700
+        self.run_straddle(bot)
+        sid = bot.active_session_id
+        self.price = 60200
+        self.run_straddle(bot)
+        self.assertEqual(self.db.get(StraddleSession, sid).futures_exit_price, 60200)
+        self.assertEqual(self.db.get(StraddleSession, sid).pnl_realized, 400)
+
     def test_straddle_no_futures_no_fictitious_profit_and_repeat_safe(self):
         bot = self.enter_straddle()
         sid = bot.active_session_id
@@ -162,11 +377,11 @@ class TradingLogicTests(unittest.TestCase):
         self.run_straddle(bot)
         sess = self.db.get(StraddleSession, sid)
         self.assertEqual(sess.status, 'Completed')
-        self.assertEqual(sess.pnl_realized, 500)
-        self.assertEqual(sess.futures_exit_price, 59700)
+        self.assertEqual(sess.pnl_realized, 400)
+        self.assertEqual(sess.futures_exit_price, 59800)
         ledger_delta = sum(l.amount for l in self.db.query(StraddleWalletLedger).all())
-        self.assertEqual(ledger_delta, 500)
-        self.assertEqual(float(self.db.get(StraddleConfig, 'PAPER_WALLET_USDT').value), 100500)
+        self.assertEqual(ledger_delta, 400)
+        self.assertEqual(float(self.db.get(StraddleConfig, 'PAPER_WALLET_USDT').value), 100400)
 
     def test_straddle_manual_squareoff_during_entry_window(self):
         bot = self.enter_straddle()
@@ -296,14 +511,14 @@ class TradingLogicTests(unittest.TestCase):
         self.assertEqual([p.symbol for p in positions], ['BTC-260908-60000-P'])
         target = self.db.query(HedgeTradeOrder).filter_by(order_type='OPTION_TARGET').one()
         self.assertEqual((target.price, target.status), (200, 'PENDING'))
-        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 150)
+        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 100)
         bot = he.HedgeEngine()
         self.quotes = [dict(symbol=q['symbol'], markPrice='220') for q in self.quotes]
         asyncio.run(bot.tick(self.db))
         self.assertEqual(self.db.get(HedgeSession, sid).status, 'Completed')
-        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 270)
-        self.assertEqual(self.db.query(HedgeSessionEvent).count(), 1)
-        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100270)
+        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 220)
+        self.assertEqual(self.db.query(HedgeSessionEvent).filter_by(event_type='FUTURES_TP').count(), 1)
+        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100220)
         self.assertEqual(target.status, 'FILLED')
 
     def test_second_tp_reentry_survives_restart_and_is_cancelled_or_filled(self):
@@ -327,7 +542,7 @@ class TradingLogicTests(unittest.TestCase):
         self.assertEqual(fut.entry_price, 59850)
         self.price = 60150
         asyncio.run(he.HedgeEngine().tick(self.db))
-        self.assertEqual(self.db.query(HedgeSessionEvent).count(), 2)
+        self.assertEqual(self.db.query(HedgeSessionEvent).filter_by(event_type='FUTURES_TP').count(), 2)
 
     def test_hedge_squareoff_repeat_and_role_attribution(self):
         bot = he.HedgeEngine()
@@ -354,9 +569,9 @@ class TradingLogicTests(unittest.TestCase):
             HedgeTradeOrder.order_type.in_(['OPTION_TARGET', 'REENTRY_LIMIT'])).all()
         self.assertEqual([o.status for o in pending], ['CANCELLED', 'CANCELLED'])
         self.assertEqual(self.db.query(HedgeOpenPosition).count(), 0)
-        self.assertEqual(sum(s.realized_pnl for s in self.db.query(HedgeSession).all()), 300)
-        self.assertEqual(sum(l.amount for l in self.db.query(HedgePaperLedgerEntry).all()), 300)
-        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100300)
+        self.assertEqual(sum(s.realized_pnl for s in self.db.query(HedgeSession).all()), 200)
+        self.assertEqual(sum(l.amount for l in self.db.query(HedgePaperLedgerEntry).all()), 200)
+        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100200)
 
     def test_hedge_bearish_tp_and_sell_reentry(self):
         for config in self.db.query(HedgeStrategyConfig).all():
@@ -396,7 +611,7 @@ class TradingLogicTests(unittest.TestCase):
         self.config(HedgeConfig, 'ENGINE_ENABLED', 0)
         self.price = 60150
         asyncio.run(bot.tick(self.db))
-        self.assertEqual(self.db.query(HedgeSessionEvent).count(), 1)
+        self.assertEqual(self.db.query(HedgeSessionEvent).filter_by(event_type='FUTURES_TP').count(), 1)
 
     def test_preview_distinguishes_filtered_quotes_from_qualifying_contract(self):
         config = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='1st Trader').one()
@@ -436,7 +651,7 @@ class TradingLogicTests(unittest.TestCase):
         for first_direction, expected in [('Bullish', 'Bearish'), ('Bearish', 'Bullish')]:
             with self.subTest(first_direction=first_direction):
                 # Each subcase has independent trading records.
-                for model in (HedgeOpenPosition, HedgeTradeOrder, HedgeSession):
+                for model in (HedgeSessionEvent, HedgeOpenPosition, HedgeTradeOrder, HedgeSession):
                     self.db.query(model).delete()
                 self.db.query(HedgeStrategyConfig).filter_by(strategy_name='1st Trader').one().direction = first_direction
                 self.db.query(HedgeStrategyConfig).filter_by(strategy_name='2nd Trader').one().direction = first_direction

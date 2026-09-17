@@ -1,6 +1,6 @@
 import logging
 import hashlib
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.config import settings
 from app.models.schema import Base, User, StraddleConfig, HedgeConfig, HedgeStrategyConfig
@@ -22,8 +22,25 @@ def get_db():
     finally:
         db.close()
 
+def migrate_execution_timestamps(bind):
+    """Add nullable audit fields without rewriting historical orders or fills."""
+    changes = {
+        "straddle_trade_orders": {"filled_at": "TIMESTAMP", "processed_at": "TIMESTAMP", "aggregate_trade_id": "BIGINT"},
+        "hedge_trade_orders": {"filled_at": "TIMESTAMP", "processed_at": "TIMESTAMP", "aggregate_trade_id": "BIGINT"},
+        "straddle_fills": {"order_id": "INTEGER"},
+        "hedge_fills": {"order_id": "INTEGER"},
+    }
+    with bind.begin() as connection:
+        for table, columns in changes.items():
+            existing = {c["name"] for c in inspect(connection).get_columns(table)}
+            for column, datatype in columns.items():
+                if column not in existing:
+                    connection.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {datatype}'))
+
+
 def init_database():
     Base.metadata.create_all(bind=engine)
+    migrate_execution_timestamps(engine)
     db = SessionLocal()
     try:
         # 1. Seed Default Admin User if not exists

@@ -20,6 +20,71 @@ _rate_limit_until: Dict[str, float] = {}
 MAX_STALE_SECONDS = 30.0
 
 
+async def get_futures_aggregate_trades(symbol, *, from_id=None, start_ms=None,
+                                      end_ms=None, limit=1000, latest=False):
+    """Exact-contract executed trade history. No mark/cache fallback on failure."""
+    if symbol != "BTCUSDT":
+        raise ValueError(f"DATA_GAP: Unsupported futures history symbol {symbol!r}")
+    if time.time() < _rate_limit_until.get("FUTURES_TRADES", 0):
+        raise ValueError("DATA_GAP: Binance futures trade history rate-limited")
+    params = {"symbol": symbol, "limit": limit}
+    if from_id is not None:
+        params["fromId"] = from_id
+    elif not latest:
+        if start_ms is None or end_ms is None or not 0 <= end_ms - start_ms < 3600000:
+            raise ValueError("Invalid futures trade recovery window")
+        params.update(startTime=start_ms, endTime=end_ms)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{BINANCE_FUTURES_URL}/fapi/v1/aggTrades", params=params)
+        if response.status_code in (418, 429):
+            retry = float(response.headers.get("Retry-After", "90"))
+            _rate_limit_until["FUTURES_TRADES"] = time.time() + max(90, retry)
+        response.raise_for_status()
+        rows = response.json()
+        if not isinstance(rows, list) or len(rows) > limit:
+            raise ValueError("Invalid aggregate trade response")
+        previous = None
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("Invalid aggregate trade")
+            if row.get("symbol", symbol) != symbol:
+                raise ValueError("Mismatched futures history symbol")
+            if any(type(row.get(k)) is not int or row[k] < 0 for k in ("a", "T")):
+                raise ValueError("Invalid aggregate trade ID/time")
+            if any(not math.isfinite(float(row[k])) or float(row[k]) <= 0 for k in ("p", "q")):
+                raise ValueError("Invalid aggregate trade price/quantity")
+            if from_id is not None and row["a"] < from_id:
+                raise ValueError("Trade history predates requested ID")
+            if not latest and from_id is None and not start_ms <= row["T"] <= end_ms:
+                raise ValueError("Trade history outside requested window")
+            if previous and (row["a"] != previous["a"] + 1 or row["T"] < previous["T"]):
+                raise ValueError("Non-contiguous or unordered trade history")
+            previous = row
+        return rows
+    except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+        raise ValueError(f"DATA_GAP: Binance {symbol} trade history unavailable: {exc}") from exc
+
+
+async def get_futures_trade_anchor():
+    """Capture an ID baseline before activation and align with exchange time."""
+    rows = await get_futures_aggregate_trades("BTCUSDT", limit=1, latest=True)
+    if not rows:
+        raise ValueError("DATA_GAP: Cannot activate futures limit without a trade ID baseline")
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(f"{BINANCE_FUTURES_URL}/fapi/v1/time")
+        response.raise_for_status()
+        server_ms = response.json()["serverTime"]
+        local_ms = int(time.time() * 1000)
+        if type(server_ms) is not int or server_ms < rows[-1]["T"]:
+            raise ValueError("Invalid Binance clock baseline")
+        return dict(last_id=rows[-1]["a"], last_trade_ms=rows[-1]["T"],
+                    active_ms=server_ms, clock_offset_ms=server_ms-local_ms)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f"DATA_GAP: Binance clock anchor unavailable: {exc}") from exc
+
+
 def cached_quote(key):
     cached = _price_cache.get(key)
     if cached and time.time() - cached[1] <= MAX_STALE_SECONDS:

@@ -51,7 +51,9 @@ calls and puts together. Exact ties use symbol order only for deterministic outp
 
 There is no strike-clash restriction between traders. Execution and dashboard previews
 share the same selector.
-Futures fills and TP calculations continue to use futures mark prices.
+Futures entry fills retain their existing price source. Futures TP levels retain
+their existing calculation, but TP execution uses recovered same-contract trades
+and fills at the stored limit price, not at the observed mark.
 
 There is no independent global option-spend restriction. Each trader controls premium,
 time value and quantity. Cards show estimated option cost (mark premium x configured
@@ -64,3 +66,22 @@ still selects the lowest-TV qualifying option within that required direction, re
 of the first trader's strike. No qualifying opposite contract means no entry.
 If Trader 1 has not entered in that expiry session, Trader 2 uses its configured direction.
 Existing positions are not reversed or replaced by this rule change.
+
+## Futures target trade recovery
+
+Straddle OCO entries now also use chronological trade recovery. The default suite
+includes the previously failing bootstrap/deadline late-publication cases, exact
+cutoff exclusion, same-millisecond entry/target crossings, and nullable timestamp
+migration. See [current implementation notes](../docs/STRADDLE_ENTRY_RECOVERY_FIX.md).
+
+`test_futures_targets.py` covers Binance aggregate-trade validation, continuation
+by aggregate ID, multiple pages (including identical timestamps), restart cursors,
+rate-limit backoff, deadline boundaries, retention failures, activation boundaries,
+and delayed trade publication. Engine tests additionally cover crossing and returning
+between polls, mark/trade disagreement, BUY/SELL targets, target-priced wallet/PnL
+settlement, cancellation, API failure recovery, and repeat-safe fills.
+
+The replay cursor and execution evidence live in existing session events with type
+`FUTURES_TP_TRACKING`. Target orders are `LIMIT` / `PENDING`, updated to `FILLED`
+without changing their stored price. Existing reset endpoints remove these records.
+See [implementation notes](../docs/SIMULATOR_FUTURES_TARGET_FIX.md) for limits and rollout.

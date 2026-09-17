@@ -14,7 +14,9 @@ from app.core.binance_client import (
     get_btc_spot_price, get_btc_futures_mark_price, get_btc_options_mark_prices
 )
 
+from app.core.binance_client import get_futures_trade_anchor
 from app.core.market_data import option_mark
+from app.core.futures_targets import create_target, target_for_session, replay_target, replay_complete, record_execution
 
 logger = logging.getLogger("hedgesnstraddle.hedge_engine")
 
@@ -565,6 +567,7 @@ class HedgeEngine:
 
         if not math.isfinite(option_mark) or option_mark <= 0:
             return None
+        target_anchor = await get_futures_trade_anchor()
         now_ist = datetime.now(ist).replace(tzinfo=None)
 
         # Calculate Futures TP Level based on option_mark
@@ -633,6 +636,8 @@ class HedgeEngine:
         )
         db.add(opt_pos)
         db.add(fut_pos)
+
+        self.ensure_futures_target(db, sess, fut_pos, opt_pos, role_name, datetime.now(ist), anchor=target_anchor)
 
         db.commit()
         logger.info("Hedge Slot [%s] Entered: Strategy %s, Strike $%.0f, OptionMark $%.2f, FuturesEntry $%.2f, FuturesTP $%.2f",
@@ -706,7 +711,18 @@ class HedgeEngine:
             amount=amount, balance_after=balance, detail=reason,
             created_at=datetime.now(ist).replace(tzinfo=None)))
 
-    async def manage_slot(self, db, sess, role):
+    def ensure_futures_target(self, db, sess, fut, opt, role, now, anchor=None):
+        order, event = target_for_session(db, HedgeTradeOrder, HedgeSessionEvent, sess.id)
+        if order is None:
+            bullish = fut.side.upper() in ("LONG", "BUY")
+            order = HedgeTradeOrder(session_id=sess.id, symbol=fut.symbol,
+                side="SELL" if bullish else "BUY", trader_leg=role, order_type="LIMIT",
+                qty=fut.qty, price=fut.entry_price + opt.entry_price if bullish else fut.entry_price - opt.entry_price,
+                status="PENDING", created_at=now.replace(tzinfo=None))
+            event = create_target(db, order, HedgeSessionEvent, now, anchor=anchor)
+        return order, event
+
+    async def manage_slot(self, db, sess, role, tp_only=False, until=None):
         """Execute the documented first/second TP phases using durable orders/events."""
         positions = db.query(HedgeOpenPosition).filter_by(session_id=sess.id).all()
         fut = next((p for p in positions if "FUTURES" in p.symbol), None)
@@ -715,10 +731,24 @@ class HedgeEngine:
             raise ValueError(f"Missing held option for session {sess.id}")
         event = db.query(HedgeSessionEvent).filter_by(session_id=sess.id, event_type="FUTURES_TP").first()
         bullish = bool(sess.bull_entry)
-        entry = sess.bull_entry or sess.bear_entry
-        target = entry + opt.entry_price if bullish else entry - opt.entry_price
         mark = self.last_futures_mark
-        hit = mark >= target if bullish else mark <= target
+        hit = None
+        if fut and not event:
+            target_order, tracking = target_for_session(db, HedgeTradeOrder, HedgeSessionEvent, sess.id)
+            if target_order is None:
+                target_order, tracking = self.ensure_futures_target(db, sess, fut, opt, role, datetime.now(ist), anchor=await get_futures_trade_anchor())
+                logger.warning("Hedge session %s: legacy open position TP tracking starts now; earlier history not inferred", sess.id)
+                db.commit()
+            if (target_order.symbol != fut.symbol or target_order.qty != fut.qty
+                    or target_order.side != ("SELL" if fut.side.upper() in ("LONG", "BUY") else "BUY")
+                    or bullish != (fut.side.upper() in ("LONG", "BUY"))
+                    or fut.entry_price != (sess.bull_entry or sess.bear_entry)):
+                raise ValueError("DATA_GAP: Futures TP does not match the held position")
+            hit = await replay_target(target_order, tracking, datetime.now(ist), until=until)
+            db.flush()
+            if until and not replay_complete(tracking, until):
+                db.commit()
+                raise ValueError("DATA_GAP: Recovering futures TP history before scheduled close")
         if fut and not event and hit:
             prior = db.query(HedgeSessionEvent).join(HedgeSession,
                 HedgeSessionEvent.session_id == HedgeSession.id).filter(
@@ -726,17 +756,19 @@ class HedgeEngine:
                 HedgeSessionEvent.event_type == "FUTURES_TP").count()
             rank = prior + 1
             now = datetime.now(ist).replace(tzinfo=None)
-            pnl = (mark - fut.entry_price) * fut.qty * (1 if bullish else -1)
-            db.add(HedgeTradeOrder(session_id=sess.id, symbol=fut.symbol,
-                side="SELL" if bullish else "BUY", trader_leg=role, order_type="TAKE_PROFIT",
-                qty=fut.qty, price=mark, status="FILLED", created_at=now))
-            if bullish: sess.bull_exit = mark
-            else: sess.bear_exit = mark
+            fill_price = target_order.price
+            pnl = (fill_price - fut.entry_price) * fut.qty * (1 if bullish else -1)
+            record_execution(target_order, hit)
+            db.add(HedgeFill(session_id=sess.id, order_id=target_order.id, trader_leg=role, side=target_order.side,
+                fill_price=fill_price, fill_qty=fut.qty, fee=0.0,
+                created_at=datetime.fromtimestamp(hit["trade_time_ms"] / 1000, ist).replace(tzinfo=None)))
+            if bullish: sess.bull_exit = fill_price
+            else: sess.bear_exit = fill_price
             db.delete(fut)
             self.credit_realized(db, sess, pnl, "FUTURES_TP")
             db.add(HedgeSessionEvent(session_id=sess.id, event_type="FUTURES_TP",
                 message=f"{role} futures TP rank {rank}",
-                payload_json=json.dumps(dict(role=role, rank=rank)), created_at=now))
+                payload_json=json.dumps(dict(role=role, rank=rank, execution=hit)), created_at=now))
             strike = float(opt.symbol.split("-")[2])
             db.add(HedgeTradeOrder(session_id=sess.id,
                 symbol=opt.symbol if rank == 1 else "BTC-USDT-FUTURES",
@@ -746,6 +778,9 @@ class HedgeEngine:
                 status="PENDING", created_at=now))
             db.commit()
             self.restore_sessions(db)
+            return
+        db.commit()  # Persist successful replay progress even without a crossing.
+        if tp_only:
             return
         pending = db.query(HedgeTradeOrder).filter_by(session_id=sess.id, status="PENDING").all()
         for order in pending:
@@ -903,6 +938,7 @@ class HedgeEngine:
                     deadline += timedelta(days=1)
                 try:
                     if now >= deadline:
+                        await self.manage_slot(db, sess, role, tp_only=True, until=deadline)
                         await self.execute_squareoff(db, "Scheduled Squareoff", [sid])
                     else:
                         await self.manage_slot(db, sess, role)

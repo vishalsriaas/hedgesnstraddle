@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, func
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Text, func
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -104,6 +104,10 @@ class StraddleTradeOrder(Base):
     cancel_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    filled_at = Column(DateTime(timezone=True), nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    aggregate_trade_id = Column(BigInteger, nullable=True)
+
 class StraddleFill(Base):
     __tablename__ = "straddle_fills"
 
@@ -115,6 +119,8 @@ class StraddleFill(Base):
     fill_qty = Column(Float, nullable=False)
     fee = Column(Float, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    order_id = Column(Integer, nullable=True, index=True)
 
 class StraddleWalletLedger(Base):
     __tablename__ = "straddle_wallet_ledger"
@@ -251,6 +257,10 @@ class HedgeTradeOrder(Base):
     cancel_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    filled_at = Column(DateTime(timezone=True), nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    aggregate_trade_id = Column(BigInteger, nullable=True)
+
 class HedgeFill(Base):
     __tablename__ = "hedge_fills"
 
@@ -262,6 +272,8 @@ class HedgeFill(Base):
     fill_qty = Column(Float, nullable=False)
     fee = Column(Float, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    order_id = Column(Integer, nullable=True, index=True)
 
 class HedgePaperLedgerEntry(Base):
     __tablename__ = "hedge_paper_ledger_entries"

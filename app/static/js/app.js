@@ -561,9 +561,17 @@ async function fetchSnapshot() {
                 setInnerHTML(hedgeViewBody, hedgeRowsHtml);
             }
 
-            function formatDisplayTime(dtStr) {
+            function formatDisplayTime(dtStr, precise = false) {
                 if (!dtStr) return '-';
-                return String(dtStr).replace("T", " ").slice(0, 19);
+                return String(dtStr).replace("T", " ").slice(0, precise ? 23 : 19);
+            }
+
+            function orderTimeDetails(o) {
+                const placed = formatDisplayTime(o.created_at);
+                if (o.status !== "FILLED") return `Placed (IST): ${placed}`;
+                const filled = o.filled_at ? formatDisplayTime(o.filled_at, true) : "Not recorded";
+                const processed = o.processed_at ? formatDisplayTime(o.processed_at, true) : "Not recorded";
+                return `Fill time (IST): ${filled}<br><small>Placed: ${placed}<br>Processed (IST): ${processed}</small>`;
             }
 
             // Render Straddle Trade Orders & Fills Table
@@ -575,7 +583,7 @@ async function fetchSnapshot() {
                     else if (o.status === "PENDING") statusClass = "badge-warning";
                     else if (o.status === "CANCELLED" || o.status === "EXPIRED") statusClass = "badge-danger";
 
-                    const timeStr = formatDisplayTime(o.created_at);
+                    const timeStr = orderTimeDetails(o);
 
                     return `
                     <tr>
@@ -646,7 +654,7 @@ async function fetchSnapshot() {
                     else if (o.status === "PENDING") statusClass = "badge-warning";
                     else if (o.status === "CANCELLED" || o.status === "EXPIRED") statusClass = "badge-danger";
 
-                    const timeStr = formatDisplayTime(o.created_at);
+                    const timeStr = orderTimeDetails(o);
 
                     return `
                     <tr>
