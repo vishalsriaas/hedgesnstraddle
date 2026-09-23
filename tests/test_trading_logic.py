@@ -122,7 +122,22 @@ class TradingLogicTests(unittest.TestCase):
         self.assertEqual(bot.state, 'LIMITS_PLACED')
         return bot
 
+    def prepare_second_quote(self):
+        # Supply an eligible opposite contract for lifecycle tests (TV clamps at zero).
+        first = self.db.query(HedgeTradeOrder).filter(
+            HedgeTradeOrder.trader_leg == '1st Trader', HedgeTradeOrder.side == 'BUY',
+            HedgeTradeOrder.symbol != 'BTC-USDT-FUTURES').first()
+        if first:
+            parts = first.symbol.split('-')
+            strike = int(float(parts[2])) + (-500 if parts[3] == 'P' else 500)
+            side = 'C' if parts[3] == 'P' else 'P'
+            symbol = f'BTC-{parts[1]}-{strike}-{side}'
+            self.quotes = [q for q in self.quotes if q['symbol'] != symbol]
+            self.quotes.append(dict(symbol=symbol, markPrice='100'))
+
     def hedge_entry(self, bot, role='1st Trader'):
+        if role == '2nd Trader':
+            self.prepare_second_quote()
         config = self.db.query(HedgeStrategyConfig).filter_by(strategy_name=role).one()
         return asyncio.run(bot.execute_slot_entry(self.db, role, config, self.price, self.price))
 
@@ -245,6 +260,7 @@ class TradingLogicTests(unittest.TestCase):
         self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100813.10)
         fill = self.db.query(HedgeFill).one()
         self.assertAlmostEqual(fill.fill_price, order.price)
+        self.quotes[0]['markPrice'] = '80'  # Keep the new 1x option target pending.
         with patch.object(ft, 'get_futures_aggregate_trades', AsyncMock()) as fetch:
             asyncio.run(he.HedgeEngine().tick(self.db))
         fetch.assert_not_awaited()
@@ -451,10 +467,11 @@ class TradingLogicTests(unittest.TestCase):
                     asyncio.run(bot.tick(self.db))
                     snap = bot.get_live_monitoring_snapshot(self.db)
                 self.assertEqual(bot.state, state)
-                for slot in ('slot1', 'slot2'):
+                for slot in ('slot1',):
                     self.assertEqual(snap[slot]['bullish']['option_mark'], 200)
                     self.assertEqual(snap[slot]['bullish']['selection_reason'], '')
                     self.assertTrue(snap[slot]['bullish']['rule_b_valid'])
+                self.assertIn('waiting for first trader', bot.preview_slot2_put_reason)
                 if state == 'DISABLED':
                     self.assertIn('Trading disabled', snap['slot1']['idle_reason'])
                 if state == 'PAUSED':
@@ -495,6 +512,7 @@ class TradingLogicTests(unittest.TestCase):
         self.assertIsNotNone(bot.slot1_session_id)
         self.assertIsNone(bot.slot2_session_id)
         bot = he.HedgeEngine()
+        self.prepare_second_quote()
         Clock.hour_now = 8
         asyncio.run(bot.tick(self.db))
         self.assertIsNotNone(bot.slot2_session_id)
@@ -510,7 +528,7 @@ class TradingLogicTests(unittest.TestCase):
         positions = self.db.query(HedgeOpenPosition).filter_by(session_id=sid).all()
         self.assertEqual([p.symbol for p in positions], ['BTC-260908-60000-P'])
         target = self.db.query(HedgeTradeOrder).filter_by(order_type='OPTION_TARGET').one()
-        self.assertEqual((target.price, target.status), (200, 'PENDING'))
+        self.assertEqual((target.price, target.status), (100, 'PENDING'))
         self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 100)
         bot = he.HedgeEngine()
         self.quotes = [dict(symbol=q['symbol'], markPrice='220') for q in self.quotes]
@@ -532,7 +550,7 @@ class TradingLogicTests(unittest.TestCase):
         self.price = 60150
         asyncio.run(bot.tick(self.db))
         reentry = self.db.query(HedgeTradeOrder).filter_by(order_type='REENTRY_LIMIT').one()
-        self.assertEqual((reentry.price, reentry.status), (59900, 'PENDING'))
+        self.assertEqual((reentry.price, reentry.status), (60400, 'PENDING'))
         self.assertEqual(bot.tp_rank_1_slot, '1st Trader')
         self.assertEqual(bot.tp_rank_2_slot, '2nd Trader')
         self.price = 59850
@@ -546,6 +564,10 @@ class TradingLogicTests(unittest.TestCase):
 
     def test_hedge_squareoff_repeat_and_role_attribution(self):
         bot = he.HedgeEngine()
+        self.db.query(HedgeStrategyConfig).filter_by(strategy_name='1st Trader').one().direction = 'Bearish'
+        self.db.commit()
+        first_sid = self.hedge_entry(bot)
+        asyncio.run(bot.execute_squareoff(self.db, session_ids=[first_sid]))
         sid = self.hedge_entry(bot, '2nd Trader')
         self.price = 61000
         asyncio.run(bot.execute_squareoff(self.db, 'Manual Emergency Squareoff'))
@@ -554,7 +576,7 @@ class TradingLogicTests(unittest.TestCase):
         asyncio.run(bot.execute_squareoff(self.db, 'Manual Emergency Squareoff'))
         self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 1000)
         self.assertEqual(self.db.query(HedgePaperLedgerEntry).count(), count)
-        self.assertTrue(all(o.trader_leg == '2nd Trader' for o in self.db.query(HedgeTradeOrder).all()))
+        self.assertTrue(all(o.trader_leg == '2nd Trader' for o in self.db.query(HedgeTradeOrder).filter_by(session_id=sid).all()))
 
     def test_hedge_scheduled_close_cancels_unfilled_targets_and_reentry(self):
         bot = he.HedgeEngine()
@@ -562,6 +584,7 @@ class TradingLogicTests(unittest.TestCase):
         self.hedge_entry(bot, '2nd Trader')
         self.price = 60150
         asyncio.run(bot.tick(self.db))
+        self.quotes = [dict(q, markPrice='90') if q['symbol'].endswith('-P') else q for q in self.quotes]
         self.price = 59850
         asyncio.run(bot.tick(self.db))
         asyncio.run(bot.execute_squareoff(self.db))
@@ -569,9 +592,9 @@ class TradingLogicTests(unittest.TestCase):
             HedgeTradeOrder.order_type.in_(['OPTION_TARGET', 'REENTRY_LIMIT'])).all()
         self.assertEqual([o.status for o in pending], ['CANCELLED', 'CANCELLED'])
         self.assertEqual(self.db.query(HedgeOpenPosition).count(), 0)
-        self.assertEqual(sum(s.realized_pnl for s in self.db.query(HedgeSession).all()), 200)
-        self.assertEqual(sum(l.amount for l in self.db.query(HedgePaperLedgerEntry).all()), 200)
-        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100200)
+        self.assertEqual(sum(s.realized_pnl for s in self.db.query(HedgeSession).all()), 190)
+        self.assertEqual(sum(l.amount for l in self.db.query(HedgePaperLedgerEntry).all()), 190)
+        self.assertEqual(float(self.db.get(HedgeConfig, 'PAPER_WALLET_USDT').value), 100190)
 
     def test_hedge_bearish_tp_and_sell_reentry(self):
         for config in self.db.query(HedgeStrategyConfig).all():
@@ -585,7 +608,7 @@ class TradingLogicTests(unittest.TestCase):
         self.price = 59850
         asyncio.run(bot.tick(self.db))
         reentry = self.db.query(HedgeTradeOrder).filter_by(order_type='REENTRY_LIMIT').one()
-        self.assertEqual((reentry.side, reentry.price), ('SELL', 60100))
+        self.assertEqual((reentry.side, reentry.price), ('SELL', 59600))
         self.price = 60150
         asyncio.run(he.HedgeEngine().tick(self.db))
         fut = self.db.query(HedgeOpenPosition).filter_by(session_id=sid, symbol='BTC-USDT-FUTURES').one()
@@ -667,7 +690,8 @@ class TradingLogicTests(unittest.TestCase):
         self.quotes = [dict(symbol='BTC-260908-60000-C', markPrice='100')]
         bot = he.HedgeEngine()
         self.hedge_entry(bot)
-        self.assertIsNone(self.hedge_entry(bot, '2nd Trader'))
+        cfg = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='2nd Trader').one()
+        self.assertIsNone(asyncio.run(bot.execute_slot_entry(self.db, '2nd Trader', cfg, self.price, self.price)))
         Clock.hour_now = 8
         asyncio.run(bot.tick(self.db))
         self.assertIn('Bullish', bot.get_live_monitoring_snapshot(self.db)['slot2']['idle_reason'])
@@ -695,6 +719,124 @@ class TradingLogicTests(unittest.TestCase):
         self.assertEqual(bot.slot2_direction, 'Bearish')
         self.assertLess(bot.slot2_strike, bot.slot1_strike)
         self.assertNotIn('cond_rule_c_valid', bot.get_live_monitoring_snapshot(self.db))
+
+    def test_first_tp_custom_multiplier_is_locked_when_target_created(self):
+        self.config(HedgeConfig, 'FIRST_TP_OPTION_MULTIPLIER', '1.5')
+        bot = he.HedgeEngine()
+        sid = self.hedge_entry(bot)
+        self.price = 60150
+        asyncio.run(bot.tick(self.db))
+        target = self.db.query(HedgeTradeOrder).filter_by(order_type='OPTION_TARGET').one()
+        self.assertEqual((target.price, target.qty, target.status), (150, 1, 'PENDING'))
+        self.config(HedgeConfig, 'FIRST_TP_OPTION_MULTIPLIER', '2')
+        self.quotes = [dict(q, markPrice='150') for q in self.quotes]
+        asyncio.run(he.HedgeEngine().tick(self.db))
+        self.assertEqual(target.status, 'FILLED')
+        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 150)
+
+    def test_legacy_global_quantity_cap_no_longer_blocks_entry(self):
+        self.config(HedgeConfig, 'Q_MAX_BTC', '.01')
+        self.assertIsNotNone(self.hedge_entry(he.HedgeEngine()))
+
+    def test_option_multiplier_config_validation(self):
+        from app.api.config_routes import update_hedge_config
+        from fastapi import HTTPException
+        from starlette.requests import Request
+        from types import SimpleNamespace
+        request = Request({'type': 'http', 'headers': [], 'client': ('127.0.0.1', 1)})
+        user = SimpleNamespace(email='test@example.com')
+        for invalid in (0, -1, 'nan', 'inf', 'bad', None, True):
+            with self.assertRaises(HTTPException):
+                update_hedge_config({'BOT_ENABLED': '0', 'FIRST_TP_OPTION_MULTIPLIER': invalid}, request, self.db, user)
+            self.assertEqual(self.db.get(HedgeConfig, 'BOT_ENABLED').value, '1')
+        for valid in ('0.5', '1', '1.5', '2'):
+            update_hedge_config({'FIRST_TP_OPTION_MULTIPLIER': valid}, request, self.db, user)
+            self.assertEqual(float(self.db.get(HedgeConfig, 'FIRST_TP_OPTION_MULTIPLIER').value), float(valid))
+
+    def test_first_tp_option_closes_at_original_premium(self):
+        bot = he.HedgeEngine()
+        sid = self.hedge_entry(bot)
+        self.price = 60150
+        asyncio.run(bot.tick(self.db))
+        target = self.db.query(HedgeTradeOrder).filter_by(order_type='OPTION_TARGET').one()
+        self.assertEqual(target.price, 100)
+        asyncio.run(he.HedgeEngine().tick(self.db))
+        self.assertEqual(target.status, 'FILLED')
+        self.assertEqual(self.db.get(HedgeSession, sid).realized_pnl, 100)
+        self.assertEqual(self.db.query(HedgeOpenPosition).filter_by(session_id=sid).count(), 0)
+
+    def test_clash_direction_and_inclusive_boundaries(self):
+        for direction in ('Bullish', 'Bearish'):
+            for gap in (250, 500):
+                with self.subTest(direction=direction, gap=gap):
+                    for model in (HedgeSessionEvent, HedgeOpenPosition, HedgeTradeOrder, HedgeSession):
+                        self.db.query(model).delete()
+                    self.config(HedgeConfig, 'MIN_STRIKE_GAP', gap)
+                    first_cfg = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='1st Trader').one()
+                    second_cfg = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='2nd Trader').one()
+                    first_cfg.direction = direction
+                    second_cfg.max_premium, second_cfg.max_time_value = 2000, 500
+                    self.db.commit()
+                    self.price = 85000
+                    first_side = 'P' if direction == 'Bullish' else 'C'
+                    second_side = 'C' if direction == 'Bullish' else 'P'
+                    sign = -1 if direction == 'Bullish' else 1
+                    self.quotes = [dict(symbol=f'BTC-260908-85000-{first_side}', markPrice='100')]
+                    bot = he.HedgeEngine()
+                    first_sid = self.hedge_entry(bot)
+                    self.assertIsNotNone(first_sid)
+                    # Lower TV must not make same/too-close/wrong-side strikes eligible.
+                    boundary = 85000 + sign * gap
+                    quotes = [dict(symbol=f'BTC-260908-{k}-{second_side}', markPrice=str(p))
+                              for k, p in [(85000, 1), (85000 + sign*(gap-1), gap-1),
+                                           (85000-sign*250, 1), (boundary, gap+100),
+                                           (boundary+sign*250, gap+450)]]
+                    # A fresh engine must use the durable reference, not cached strikes.
+                    fresh = he.HedgeEngine()
+                    sid = asyncio.run(fresh.execute_slot_entry(self.db, '2nd Trader', second_cfg,
+                        85000, 85000, quotes=quotes))
+                    self.assertIsNotNone(sid)
+                    held = self.db.query(HedgeOpenPosition).filter(
+                        HedgeOpenPosition.session_id == sid,
+                        HedgeOpenPosition.symbol != 'BTC-USDT-FUTURES').one()
+                    self.assertEqual(held.symbol, f'BTC-260908-{boundary}-{second_side}')
+
+    def test_clash_default_500_blocks_250_and_does_not_bypass_premium(self):
+        self.price = 85000
+        self.quotes = [dict(symbol='BTC-260908-85000-P', markPrice='100')]
+        bot = he.HedgeEngine()
+        self.hedge_entry(bot)
+        cfg = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='2nd Trader').one()
+        cfg.max_premium, cfg.max_time_value = 2000, 500
+        self.db.commit()
+        quotes = [dict(symbol='BTC-260908-84750-C', markPrice='300')]
+        self.assertIsNone(asyncio.run(bot.execute_slot_entry(self.db, '2nd Trader', cfg,
+            85000, 85000, quotes=quotes)))
+        quotes.append(dict(symbol='BTC-260908-84500-C', markPrice='600'))
+        cfg.max_premium = 599
+        self.db.commit()
+        self.assertIsNone(asyncio.run(bot.execute_slot_entry(self.db, '2nd Trader', cfg,
+            85000, 85000, quotes=quotes)))
+        self.assertEqual(self.db.query(HedgeSession).count(), 1)
+        cfg.max_premium = 600
+        self.db.commit()
+        self.assertIsNotNone(asyncio.run(bot.execute_slot_entry(self.db, '2nd Trader', cfg,
+            85000, 85000, quotes=quotes)))
+
+    def test_clash_config_api_validates_before_any_write(self):
+        from app.api.config_routes import update_hedge_config
+        from fastapi import HTTPException
+        from starlette.requests import Request
+        from types import SimpleNamespace
+        request = Request({'type': 'http', 'headers': [], 'client': ('127.0.0.1', 1)})
+        user = SimpleNamespace(email='test@example.com')
+        for invalid in (0, 499, 501, 'bad', None, 'nan', True):
+            with self.assertRaises(HTTPException):
+                update_hedge_config({'BOT_ENABLED': '0', 'MIN_STRIKE_GAP': invalid}, request, self.db, user)
+            self.assertEqual(self.db.get(HedgeConfig, 'BOT_ENABLED').value, '1')
+        for valid in (250, '500'):
+            update_hedge_config({'MIN_STRIKE_GAP': valid}, request, self.db, user)
+            self.assertEqual(self.db.get(HedgeConfig, 'MIN_STRIKE_GAP').value, str(valid))
 
     def selection(self, entries, direction='Auto', premium=600, tv=300, now=None):
         quotes = [dict(symbol=f'BTC-{expiry}-{strike}-{side}', markPrice=str(mark))
@@ -734,20 +876,11 @@ class TradingLogicTests(unittest.TestCase):
         before = datetime(2026, 9, 8, 13, 29, tzinfo=he.ist)
         self.assertEqual(self.selection(quotes, now=before)[2], '260908')
 
-    def test_selection_execution_uses_spot_without_strike_gate(self):
-        self.config(HedgeConfig, 'MAX_OPTION_SPEND', 1000)
-        cfg = self.db.query(HedgeStrategyConfig).filter_by(strategy_name='2nd Trader').one()
-        cfg.direction, cfg.max_premium, cfg.max_time_value = 'Auto', 600, 300
-        self.db.commit()
+    def test_second_entry_requires_durable_first_reference(self):
         bot = he.HedgeEngine()
-        quotes = [dict(symbol='BTC-260908-79000-C', markPrice='600'),
-                  dict(symbol='BTC-260908-79500-P', markPrice='350')]
         bot.slot1_session_id, bot.slot1_strike = 123, 79250
-        # Lowest-TV selection is not restricted by the other slot's strike.
-        sid = asyncio.run(bot.execute_slot_entry(self.db, '2nd Trader', cfg, 78900, 79400, quotes=quotes))
-        self.assertIsNotNone(sid)
-        self.assertEqual(self.db.get(HedgeSession, sid).bear_entry, 78900)
-        self.assertEqual(bot.slot2_strike, 79000)
+        self.assertIsNone(self.hedge_entry(bot, '2nd Trader'))
+        self.assertEqual(self.db.query(HedgeSession).count(), 0)
 
     def test_tick_uses_one_options_snapshot_for_preview_and_entry(self):
         quotes = AsyncMock(return_value=self.quotes)

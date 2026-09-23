@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -103,6 +104,22 @@ def update_hedge_config(
     db: Session = Depends(get_db), 
     current_user: User = Depends(require_admin)
 ):
+    if "FIRST_TP_OPTION_MULTIPLIER" in payload:
+        try:
+            multiplier = float(payload["FIRST_TP_OPTION_MULTIPLIER"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="First TP option multiplier must be a positive finite number")
+        if isinstance(payload["FIRST_TP_OPTION_MULTIPLIER"], bool) or not math.isfinite(multiplier) or multiplier <= 0:
+            raise HTTPException(status_code=422, detail="First TP option multiplier must be a positive finite number")
+        payload["FIRST_TP_OPTION_MULTIPLIER"] = str(multiplier)
+    if "MIN_STRIKE_GAP" in payload:
+        try:
+            gap = float(payload["MIN_STRIKE_GAP"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="MIN_STRIKE_GAP must be 250 or 500")
+        if gap not in (250, 500):
+            raise HTTPException(status_code=422, detail="MIN_STRIKE_GAP must be 250 or 500")
+        payload["MIN_STRIKE_GAP"] = str(int(gap))
     ip_addr = get_client_ip(request)
     applied_results = []
 

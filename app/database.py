@@ -96,6 +96,7 @@ def init_database():
 
         # 3. Complete Hedge Trader Settings Seed
         default_hedge_config = {
+            "MIN_STRIKE_GAP": "500",
             "RUNTIME_MODE": "Paper",
             "ENGINE_ENABLED": "1",
             "PAPER_TRADING_ENABLED": "1",
@@ -106,7 +107,7 @@ def init_database():
             "SKIP_WEEKENDS": "1",
             "VIRTUAL_BALANCE_USDT": "100000.0",
             "MIN_PAPER_BALANCE": "1000.0",
-            "Q_MAX_BTC": "1000.0",
+            "FIRST_TP_OPTION_MULTIPLIER": "1",
             "SAFE_MODE_TIMEOUT_SEC": "5",
             "LATENCY_WARN_MS": "500",
             "FILL_TIMEOUT_SEC": "5",

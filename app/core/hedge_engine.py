@@ -510,6 +510,49 @@ class HedgeEngine:
         tv = self.calculate_time_value(option_mark, strike, option_type, spot_price)
         return tv <= max_time_value
 
+    def select_role_option(self, db, role, quotes, spot, direction, premium, tv, now):
+        """Apply the second trader's clash filter before lowest-TV selection."""
+        if role == "2nd Trader":
+            first = db.query(HedgeTradeOrder).join(HedgeSession,
+                HedgeTradeOrder.session_id == HedgeSession.id).filter(
+                HedgeSession.expiry_session == get_current_binance_session_date(),
+                HedgeTradeOrder.trader_leg == "1st Trader",
+                HedgeTradeOrder.status == "FILLED", HedgeTradeOrder.side == "BUY",
+                HedgeTradeOrder.symbol != "BTC-USDT-FUTURES"
+            ).order_by(HedgeSession.id, HedgeTradeOrder.id).first()
+            if first is None:
+                raise ValueError("Clash rule: waiting for first trader's recorded hedge entry")
+            parts = first.symbol.split("-")
+            if len(parts) != 4 or parts[0] != "BTC" or parts[3] not in ("P", "C"):
+                raise ValueError("Clash rule: invalid first trader hedge symbol")
+            strike = float(parts[2])
+            gap = float(self.load_config(db).get("MIN_STRIKE_GAP", "500"))
+            if gap not in (250, 500) or not math.isfinite(strike) or strike <= 0:
+                raise ValueError("Clash rule: minimum strike gap must be 250 or 500")
+            required = "Bearish" if parts[3] == "P" else "Bullish"
+            if direction in ("Bullish", "Bearish") and direction != required:
+                raise ValueError("Clash rule: second trader must take the opposite direction")
+            direction = required
+            eligible = []
+            for quote in quotes:
+                if not isinstance(quote, dict):
+                    continue
+                symbol = quote.get("symbol", "")
+                candidate = symbol.split("-") if isinstance(symbol, str) else []
+                if len(candidate) != 4 or candidate[:2] != parts[:2]:
+                    continue
+                try:
+                    k = float(candidate[2])
+                except ValueError:
+                    continue
+                if ((parts[3] == "P" and candidate[3] == "C" and k <= strike - gap)
+                        or (parts[3] == "C" and candidate[3] == "P" and k >= strike + gap)):
+                    eligible.append(quote)
+            quotes = eligible
+            if not quotes:
+                raise ValueError(f"Clash rule: no opposite hedge meets minimum strike gap {gap:g}")
+        return self.select_itm_option(quotes, spot, direction, premium, tv, now)
+
     def entry_direction(self, db, role_name, configured_direction):
         """Trader 1's recorded entry locks Trader 2 to the opposite side for this expiry."""
         if role_name == "2nd Trader":
@@ -544,8 +587,6 @@ class HedgeEngine:
             return None
         if not math.isfinite(qty) or qty <= 0:
             raise ValueError("Contract quantity must be positive")
-        if qty > float(cfg.get("Q_MAX_BTC", "1000")):
-            return None
         existing = db.query(HedgeTradeOrder).join(
             HedgeSession, HedgeTradeOrder.session_id == HedgeSession.id).filter(
                 HedgeSession.expiry_session == current_session_key,
@@ -557,8 +598,8 @@ class HedgeEngine:
             quotes = await get_btc_options_mark_prices()
         snapshot_time = snapshot_time or datetime.now(timezone.utc)
         try:
-            strike, option_mark, expiry_sym, opt_symbol = self.select_itm_option(
-                quotes, spot_price, self.entry_direction(db, role_name, role_config.direction),
+            strike, option_mark, expiry_sym, opt_symbol = self.select_role_option(
+                db, role_name, quotes, spot_price, self.entry_direction(db, role_name, role_config.direction),
                 max_premium, max_tv, snapshot_time)
         except ValueError as exc:
             logger.info("%s entry skipped: %s", role_name, exc)
@@ -755,6 +796,13 @@ class HedgeEngine:
                 HedgeSession.expiry_session == sess.expiry_session,
                 HedgeSessionEvent.event_type == "FUTURES_TP").count()
             rank = prior + 1
+            option_target = opt.entry_price
+            if rank == 1:
+                multiplier = float(self.load_config(db).get("FIRST_TP_OPTION_MULTIPLIER", "1"))
+                option_target = opt.entry_price * multiplier
+                if (not math.isfinite(multiplier) or multiplier <= 0
+                        or not math.isfinite(option_target) or option_target <= 0):
+                    raise ValueError("First TP option multiplier must produce a finite positive target")
             now = datetime.now(ist).replace(tzinfo=None)
             fill_price = target_order.price
             pnl = (fill_price - fut.entry_price) * fut.qty * (1 if bullish else -1)
@@ -774,7 +822,7 @@ class HedgeEngine:
                 symbol=opt.symbol if rank == 1 else "BTC-USDT-FUTURES",
                 side="SELL" if rank == 1 or not bullish else "BUY", trader_leg=role,
                 order_type="OPTION_TARGET" if rank == 1 else "REENTRY_LIMIT", qty=opt.qty,
-                price=opt.entry_price * 2 if rank == 1 else (strike - opt.entry_price if bullish else strike + opt.entry_price),
+                price=option_target if rank == 1 else (strike - opt.entry_price if bullish else strike + opt.entry_price),
                 status="PENDING", created_at=now))
             db.commit()
             self.restore_sessions(db)
@@ -908,22 +956,22 @@ class HedgeEngine:
             # Preview failures must not prevent another active slot from being managed.
             for direction, label in (("Bullish", "put"), ("Bearish", "call")):
                 try:
-                    strike, mark, _, _ = self.select_itm_option(self.option_quotes, self.last_spot_price, direction, config.max_premium, config.max_time_value, now)
+                    strike, mark, _, _ = self.select_role_option(db, role, self.option_quotes, self.last_spot_price, direction, config.max_premium, config.max_time_value, now)
                     reason = ""
                 except ValueError:
                     strike, mark = 0.0, 0.0
                     try:
-                        self.select_itm_option(self.option_quotes, self.last_spot_price, direction, float("inf"), float("inf"), now)
+                        self.select_role_option(db, role, self.option_quotes, self.last_spot_price, direction, float("inf"), float("inf"), now)
                         reason = f"Quotes available; no contract passes premium <= {config.max_premium:g} and TV <= {config.max_time_value:g}"
-                    except ValueError:
-                        reason = "No eligible ITM quotes with expiry remaining between 0 and 24 hours"
+                    except ValueError as exc:
+                        reason = str(exc)
                 setattr(self, f"preview_slot{slot}_{label}_reason", reason)
                 setattr(self, f"preview_slot{slot}_{label}_strike", strike)
                 setattr(self, f"preview_slot{slot}_{label}_mark", mark)
             required_direction = self.entry_direction(db, role, config.direction)
             setattr(self, f"preview_slot{slot}_required_direction", required_direction)
             try:
-                selected = self.select_itm_option(self.option_quotes, self.last_spot_price,
+                selected = self.select_role_option(db, role, self.option_quotes, self.last_spot_price,
                     required_direction, config.max_premium, config.max_time_value, now)
             except ValueError:
                 selected = None
